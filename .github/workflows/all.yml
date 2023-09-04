@@ -1,0 +1,47 @@
+name: Build & Test
+
+on: [push, pull_request]
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+        ocaml-compiler:
+          - "4.14.0"
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+    - name: Checkout tree
+      uses: actions/checkout@v4
+
+    - name: Set-up OCaml
+      uses: ocaml/setup-ocaml@v2
+      with:
+        ocaml-compiler: ${{ matrix.ocaml-compiler }}
+
+    - name: Install OCaml deps
+      run: opam install . --deps-only --with-test
+
+    - name: Build
+      run: opam exec -- dune build
+
+    - name: Test
+      run: opam exec -- dune runtest
+
+  lint-fmt:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout tree
+        uses: actions/checkout@v4
+
+      - name: Set-up OCaml
+        uses: ocaml/setup-ocaml@v2
+        with:
+          ocaml-compiler: 4.14
+
+      - name: Lint fmt
+        uses: ocaml/setup-ocaml/lint-fmt@v2

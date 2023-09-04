@@ -1,0 +1,8 @@
+(menhir
+ (modules template_parser))
+
+(library
+ (name passage)
+ (libraries stdlib devkit extunix fileutils lwt.unix menhirLib re2 sedlex)
+ (preprocess
+  (pps lwt_ppx sedlex.ppx)))

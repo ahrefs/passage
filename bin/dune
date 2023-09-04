@@ -1,0 +1,7 @@
+(executable
+ (name main)
+ (public_name passage)
+ (package passage)
+ (libraries cmdliner devkit lwt.unix passage qrc re2)
+ (preprocess
+  (pps lwt_ppx)))

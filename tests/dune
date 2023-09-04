@@ -1,0 +1,4 @@
+(cram
+ (deps
+  (file setup_fixtures.sh)
+  %{bin:passage}))

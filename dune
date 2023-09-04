@@ -1,0 +1,9 @@
+(env
+ (ci_build
+  (flags
+   ((:include dune_flags.sexp)
+    -warn-error
+    +A-d)))
+ (_
+  (flags
+   (:include dune_flags.sexp))))
