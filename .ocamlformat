@@ -1,4 +1,4 @@
-version=0.24.1
+version=0.26.2
 profile=default
 ocaml-version=4.14.0
 
@@ -17,4 +17,3 @@ nested-match=align # deprecated
 parens-ite=true
 parens-tuple=multi-line-only
 type-decl=sparse
-
