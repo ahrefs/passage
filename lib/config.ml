@@ -9,13 +9,17 @@ let base_dir =
 *)
 let keys_dir =
   lazy (Option.value (Sys.getenv_opt "PASSAGE_KEYS") ~default:(Filename.concat base_dir "keys") |> ExtUnix.All.realpath)
+
 let secrets_dir =
   lazy
     (Option.value (Sys.getenv_opt "PASSAGE_SECRETS") ~default:(Filename.concat base_dir "secrets")
     |> ExtUnix.All.realpath)
+
 let identity_file =
   lazy
     (Option.value (Sys.getenv_opt "PASSAGE_IDENTITY") ~default:(Filename.concat base_dir "identity.key")
     |> ExtUnix.All.realpath)
+
 let x_selection = Option.value (Sys.getenv_opt "PASSAGE_X_SELECTION") ~default:"clipboard"
+
 let clip_time = Option.value (Sys.getenv_opt "PASSAGE_CLIP_TIME") ~default:"45" |> int_of_string

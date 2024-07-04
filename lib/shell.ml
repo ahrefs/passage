@@ -29,9 +29,9 @@ let read_sh_cmd_wrapper raw_cmd_fmt read =
     (fun raw_cmd ->
       let cmd = Lwt_process.shell raw_cmd in
       Lwt_process.with_process_in cmd (fun p ->
-        let%lwt status = p#status in
-        let%lwt () = check_process_status raw_cmd status in
-        read p#stdout))
+          let%lwt status = p#status in
+          let%lwt () = check_process_status raw_cmd status in
+          read p#stdout))
     raw_cmd_fmt
 let pread_sh_cmd raw_cmd_fmt = read_sh_cmd_wrapper raw_cmd_fmt Lwt_io.read
 let pread_line_sh_cmd raw_cmd_fmt = read_sh_cmd_wrapper raw_cmd_fmt Lwt_io.read_line
@@ -39,12 +39,6 @@ let pread_line_sh_cmd raw_cmd_fmt = read_sh_cmd_wrapper raw_cmd_fmt Lwt_io.read_
 let editor filename =
   let editor = Option.value (Sys.getenv_opt "EDITOR") ~default:"editor" in
   exec "%s %s" (quote editor) (quote filename)
-
-let list_files_with_ext_and_strip_ext_tree ~path ~ext =
-  (* remove ext at end of line, but keep colors *)
-  let sed_arg = quote (sprintf {|s/\.%s(\x1B\[[0-9]+m)?( ->|$)/\1\2/g|} ext) in
-  let file_pattern = sprintf "*%s" ext in
-  exec "tree -a -P %s -C -l --noreport %s | sed -E %s" (quote file_pattern) (quote path) sed_arg
 
 let xclip_read_clipboard x_selection = pread_sh_cmd "xclip -o -selection %s 2>/dev/null" (quote x_selection)
 
@@ -54,11 +48,17 @@ let xclip_copy_to_clipboard s ~x_selection =
 let clear_clipboard_managers () =
   exec "qdbus org.kde.klipper /klipper org.kde.klipper.klipper.clearClipboardHistory &>/dev/null"
 
-let sleep sleep_proc_name duration_s =
-  exec {|( exec -a %s bash <<<"trap 'kill %%1' TERM; sleep '%d' & wait" )|} (quote sleep_proc_name) duration_s
-
 (* return success even if no processes were killed *)
 let kill_processes proc_name = exec "pkill -f %s 2>/dev/null || true" (quote @@ "^" ^ proc_name)
+
+let die ?exn fmt =
+  kfprintf
+    (fun out ->
+      (match exn with
+      | None -> fprintf out "\n"
+      | Some exn -> fprintf out " : %s\n" (Exn.to_string exn));
+      exit 1)
+    stderr fmt
 
 let age_get_recipient_key_from_identity_file identity_file = pread_line_sh_cmd "age-keygen -y %s" (quote identity_file)
 

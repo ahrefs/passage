@@ -3,11 +3,15 @@
 # source it in your bashrc or link into /etc/bash_completion.d/
 
 _passage_list_secrets() {
-  find -L ~/.config/passage/secrets/ -name '*.age' -type f -printf '%P\n' | sed s/.age$//
+  local CONF_DIR="${PASSAGE_DIR:-${HOME}/.config/passage}"
+  local SECR_DIR="${PASSAGE_SECRETS:-${CONF_DIR}/secrets}"
+  find -L "${SECR_DIR}/" -name '*.age' -type f -printf '%P\n' | sed s/.age$//
 }
 
 _passage_list_recipients() {
-  find -L ~/.config/passage/keys/ -name '*.pub' -type f -printf '%P\n' | sed s/.pub$//
+  local CONF_DIR="${PASSAGE_DIR:-${HOME}/.config/passage}"
+  local KEYS_DIR="${PASSAGE_KEYS:-${CONF_DIR}/keys}"
+  find -L "${KEYS_DIR}/" -name '*.pub' -type f -printf '%P\n' | sed s/.pub$//
 }
 
 # Do completion from a passed list of paths
@@ -57,7 +61,7 @@ _passage_paths_completion() {
 _passage_completions()
 {
   if [ "${#COMP_WORDS[@]}" -le 2 ]; then
-    local cmds="append edit get head list ls refresh replace search secret show template what who"
+    local cmds="create delete edit edit-who get head list ls new realpath refresh replace search secret show template template-secrets what who"
     COMPREPLY=($(compgen -W "$cmds" -- "${COMP_WORDS[1]}"))
   else
     case "${COMP_WORDS[1]}" in
@@ -69,7 +73,11 @@ _passage_completions()
     template)
       # add autocomplete only for 2nd and 3rd arg (corresponding to template and target file respectively)
       if [[ $COMP_CWORD == 2 || $COMP_CWORD == 3 ]]; then
-        COMPREPLY=($(compgen -o filenames -A file -- "${COMP_WORDS[$COMP_CWORD]}"))
+        compopt -o default
+      fi;;
+    template-secrets)
+      if [[ $COMP_CWORD == 2 ]]; then
+        compopt -o default
       fi;;
     what)
       # add autocomplete only for 2nd arg

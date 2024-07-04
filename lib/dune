@@ -3,6 +3,15 @@
 
 (library
  (name passage)
- (libraries stdlib devkit extunix fileutils lwt.unix menhirLib re2 sedlex)
+ (libraries
+  devkit
+  extunix
+  fileutils
+  fpath
+  lwt.unix
+  menhirLib
+  re2
+  sedlex
+  unix)
  (preprocess
   (pps lwt_ppx sedlex.ppx)))

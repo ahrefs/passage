@@ -13,10 +13,14 @@ type recipient = {
 
 let ext = "age"
 
-let get_recipient_keys recipients = List.concat_map (fun r -> r.keys) recipients
+let recipient_compare a b = String.compare a.name b.name
+
+let is_group_recipient r = String.starts_with ~prefix:"@" r
+
+let get_recipients_keys recipients = List.concat_map (fun r -> r.keys) recipients
 
 let encrypt_from_stdin_to_stdout ~recipients ~stdin ~stdout =
-  let recipient_keys = get_recipient_keys recipients |> Key.project_list in
+  let recipient_keys = get_recipients_keys recipients |> Key.project_list in
   Shell.age_encrypt ~stdin ~stdout recipient_keys
 
 let encrypt_to_stdout ~recipients ~plaintext ~stdout =

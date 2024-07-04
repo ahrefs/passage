@@ -9,29 +9,25 @@ Set up secrets with comments
 
 No path specified - should search all secrets and list secrets with comments
   $ passage search "comment"
-  W: failed to search 00/.secret_starting_with_dot : Failure("age --decrypt --identity $TESTCASE_ROOT/bobby.bob.key : exit code 1")
-  W: failed to search 00/secret1 : Failure("age --decrypt --identity $TESTCASE_ROOT/bobby.bob.key : exit code 1")
-  W: failed to search 01/secret1 : Failure("age --decrypt --identity $TESTCASE_ROOT/bobby.bob.key : exit code 1")
-  I: skipped 3 secrets, failed to search 3 secrets and matched 3 secrets
+  I: skipped 4 secrets, failed to search 0 secrets and matched 3 secrets
   secret_ghi
   secret_jkl
   secret_mno
+  $ passage search "abc"
+  I: skipped 4 secrets, failed to search 0 secrets and matched 1 secrets
+  secret_abc
 
 Path specified - should search only in specified path
   $ passage search "comment" 00
-  W: failed to search 00/.secret_starting_with_dot : Failure("age --decrypt --identity $TESTCASE_ROOT/bobby.bob.key : exit code 1")
-  W: failed to search 00/secret1 : Failure("age --decrypt --identity $TESTCASE_ROOT/bobby.bob.key : exit code 1")
-  I: skipped 0 secrets, failed to search 2 secrets and matched 0 secrets
+  I: skipped 0 secrets, failed to search 0 secrets and matched 0 secrets
 
 Regex specified as pattern  - should list all multiline secrets
   $ passage search -v "secret: line (1|2)"
-  W: failed to search 00/.secret_starting_with_dot : Failure("age --decrypt --identity $TESTCASE_ROOT/bobby.bob.key : exit code 1")
-  W: failed to search 00/secret1 : Failure("age --decrypt --identity $TESTCASE_ROOT/bobby.bob.key : exit code 1")
   I: skipped 01/00/secret1
   I: skipped 01/00/secret2
-  W: failed to search 01/secret1 : Failure("age --decrypt --identity $TESTCASE_ROOT/bobby.bob.key : exit code 1")
-  I: skipped 02/secret1
-  I: skipped 3 secrets, failed to search 3 secrets and matched 3 secrets
+  I: skipped 03/secret1
+  I: skipped 05/secret1
+  I: skipped 4 secrets, failed to search 0 secrets and matched 3 secrets
   secret_def
   secret_jkl
   secret_mno

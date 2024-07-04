@@ -5,6 +5,7 @@ DOBBY="dobby.dob"
 POPPY="poppy.pop"
 ROBBY="robby.rob"
 TOMMY="tommy.tom"
+HOST_A="host/a"
 
 export PASSAGE_DIR=./fixtures
 # Set default identity as Bobby Bob
@@ -45,34 +46,53 @@ setup_identity() {
   age-keygen -y "$IDENTITY" > "$PASSAGE_DIR/keys/$1.pub"
 }
 
-setup_keys_dir() {
-  mkdir -p "$PASSAGE_DIR/keys"
-  setup_identity $BOBBY true
-  setup_identity $DOBBY true
-  setup_identity $POPPY true
-  setup_identity $ROBBY true
-  setup_identity $TOMMY true
+setup_group() {
+  NAME=$1
+  GROUP_FILE="$PASSAGE_DIR/keys/$NAME.group"
+  touch "$GROUP_FILE"
+
+  # Shift the first argument (group name) off the list
+  shift
+
+  # Now, loop through the recipients and add them to the group file
+  for recipient in "$@"
+  do
+      echo "$recipient" >> "$GROUP_FILE"
+  done
 }
 
-setup_empty_secret_file() {
-  SECRET_NAME=$1
-  SECRET_FILE="$PASSAGE_DIR/secrets/$SECRET_NAME.age"
-  DIR=$(dirname "$SECRET_FILE")
-  mkdir -p "$DIR"
-  touch "$SECRET_FILE"
+setup_keys_dir() {
+  mkdir host
+  mkdir -p "$PASSAGE_DIR/keys"
+  mkdir -p "$PASSAGE_DIR/keys/host"
+  setup_identity $BOBBY
+  setup_identity $DOBBY
+  setup_identity $POPPY
+  setup_identity $ROBBY
+  setup_identity $TOMMY
+  setup_identity $HOST_A
 }
 
 setup_singleline_secret_without_comments() {
   name=$1
-  cat<<EOF | passage replace "$name"
+  cat<<EOF | passage create "$name"
+($name) secret: single line
+EOF
+}
+
+setup_singleline_secret_with_identity() {
+  name=$1
+  id=$2
+  cat<<EOF | PASSAGE_IDENTITY=$2 passage create "$name"
 ($name) secret: single line
 EOF
 }
 
 setup_singleline_secret_with_comments() {
   name=$1
-  cat<<EOF | passage replace "$name"
+  cat<<EOF | passage create "$name"
 ($name) secret: single line
+
 ($name) comment: line 1
 ($name) comment: line 2
 EOF
@@ -80,7 +100,7 @@ EOF
 
 setup_multiline_secret_without_comments() {
   name=$1
-  cat<<EOF | passage replace "$name"
+  cat<<EOF | passage create "$name"
 
 
 ($name) secret: line 1
@@ -90,7 +110,7 @@ EOF
 
 setup_multiline_secret_with_comments() {
   name=$1
-  cat<<EOF | passage replace "$name"
+  cat<<EOF | passage create "$name"
 
 ($name) comment: line 1
 ($name) comment: line 2
@@ -103,25 +123,36 @@ EOF
 # $PASSAGE_DIR/secrets/
 # ├── .keys
 # ├── 00
-#     ├── .secret_starting_with_dot.age
-#     └── secret1.age
+# │   ├── .keys
+# │   ├── .secret_starting_with_dot.age
+# │   └── secret1.age
 # ├── 01
+# │   ├── .keys
 # │   ├── 00
 # │   │   ├── .keys
 # │   │   ├── secret1.age
 # │   │   └── secret2.age
 # │   └── secret1.age
-# └── 02
-#     ├── .keys
-#     └── secret1.age
+# ├── 02
+# │   └── .keys
+# │   └── secret1.age
+# ├── 03
+# │   └── .keys
+# │   └── secret1.age
+# ├── 04
+# │   └── .keys
+# │   └── secret1.age
+# └── 05
+#     ├── .keys
+#     └── secret1.age
+
 setup_secrets_dir() {
   mkdir -p "$PASSAGE_DIR/secrets"
-  setup_empty_secret_file "00/secret1"
-  setup_empty_secret_file "00/.secret_starting_with_dot"
-  setup_empty_secret_file "01/00/secret1"
-  setup_empty_secret_file "01/00/secret2"
-  setup_empty_secret_file "01/secret1"
-  setup_empty_secret_file "02/secret1"
+
+  # Create the directories and keys files for the secrets folders manually, so that we don't have to handle
+  # it with passage at the fixtures setup time. We will test these things in the cram tests
+  mkdir -p "$PASSAGE_DIR/secrets/00" \
+  "$PASSAGE_DIR/secrets/01" "$PASSAGE_DIR/secrets/01/00" "$PASSAGE_DIR/secrets/02" "$PASSAGE_DIR/secrets/03" "$PASSAGE_DIR/secrets/04" "$PASSAGE_DIR/secrets/05"
 
   cat<<EOF > "$PASSAGE_DIR/secrets/.keys"
 bobby.bob
@@ -134,23 +165,92 @@ tommy.tom # should be omitted
 
 user.with.missing.key
 EOF
+  cat<<EOF > "$PASSAGE_DIR/secrets/00/.keys"
+bobby.bob
+robby.rob
+dobby.dob
+tommy.tom
+user.with.missing.key
+EOF
+  cat<<EOF > "$PASSAGE_DIR/secrets/01/.keys"
+bobby.bob
+robby.rob
+dobby.dob
+tommy.tom
+user.with.missing.key
+EOF
   cat<<EOF > "$PASSAGE_DIR/secrets/01/00/.keys"
 robby.rob
 poppy.pop
 EOF
-  touch "$PASSAGE_DIR/secrets/02/.keys"
+  cat<<EOF > "$PASSAGE_DIR/secrets/02/.keys"
+bobby.bob
+EOF
+
+  cat<<EOF > "$PASSAGE_DIR/secrets/03/.keys"
+host/a
+poppy.pop
+@root
+EOF
+
+  cat<<EOF > "$PASSAGE_DIR/secrets/04/.keys"
+@everyone
+EOF
+
+  cat<<EOF > "$PASSAGE_DIR/secrets/05/.keys"
+@with_issues
+EOF
+
+  # Add groups
+  setup_group root robby.rob tommy.tom
+  setup_group with_issues poppy.pop no.user this.one.doesnt.exist
+
+  # Add base secrets
+  setup_singleline_secret_without_comments "00/secret1"
+  setup_singleline_secret_without_comments "00/.secret_starting_with_dot"
+  setup_singleline_secret_with_identity "01/00/secret1" "$ROBBY.key"
+  setup_singleline_secret_with_identity "01/00/secret2" "$ROBBY.key"
+  setup_singleline_secret_without_comments "01/secret1"
+  setup_singleline_secret_without_comments "02/secret1"
+  setup_singleline_secret_with_identity "03/secret1" "$POPPY.key"
+  setup_singleline_secret_without_comments "04/secret1"
+  setup_singleline_secret_with_identity "05/secret1" "$POPPY.key"
+
 }
 
 # $PASSAGE_DIR/templates/
-# ├── single_secret.txt
-# └── multiple_secrets.txt
+# ├── crazy_secret.txt
+# ├── inaccessible_secret.txt
+# ├── multiple_secrets.txt
+# └── single_secret.txt
 setup_templates() {
   mkdir -p "$PASSAGE_DIR/templates"
+
+  cat<<EOF > "$PASSAGE_DIR/templates/crazy_secret.txt"
+okay secret: {{{/./..//-//././../00/secret}}}
+EOF
+
+  cat<<EOF > "$PASSAGE_DIR/templates/inaccessible_secret.txt"
+not okay secret: {{{01/00/secret3}}}
+not okay secret: {{{01/00/secret3}}}
+EOF
 
   cat<<EOF > "$PASSAGE_DIR/templates/single_secret.txt"
 this is a template with a single secret
 {{{ this_should_not_be_substituted }}}
 TEXT BEFORE SECRET{{{single_secret}}}TEXT AFTER SECRET
+EOF
+
+  cat<<EOF > "$PASSAGE_DIR/templates/single_secret_for_groups.txt"
+this is a template with a single secret
+{{{ this_should_not_be_substituted }}}
+TEXT BEFORE SECRET-{{{03/secret1}}}-TEXT AFTER SECRET
+EOF
+
+  cat<<EOF > "$PASSAGE_DIR/templates/single_secret_for_everyone.txt"
+this is a template with a single secret
+{{{ this_should_not_be_substituted }}}
+TEXT BEFORE SECRET-{{{04/secret1}}}-TEXT AFTER SECRET
 EOF
 
   cat<<EOF > "$PASSAGE_DIR/templates/multiple_secrets.txt"

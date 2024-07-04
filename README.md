@@ -23,44 +23,62 @@ make test
 
 ## Secret format
 
-Multiline secrets:
+Multi-line secrets with comments:
 ```
 <empty line>
-possibly several lines of comments without empty lines
+possibly several lines of comments
+without empty lines
 <empty line>
 secret until end of file
 ```
 
-Single-line secrets:
+Multi-line secrets without comments:
+```
+<empty line>
+<empty line>
+secret until end of file
+```
+
+Single-line secrets with comments:
 ```
 single-line secret
+<empty line>
 comments until end of file
 ```
 
-The rationale for why we have 2 distinct secret formats for multiline and single-line secrets
-(and not just multiline secrets) is mainly for backward compatibility reasons since most of
+Single-line secrets without comments:
+```
+single-line secret
+```
+
+The rationale for why we have 2 distinct secret formats for multi-line and single-line secrets
+(and not just multi-line secrets) is mainly for backward compatibility reasons since most of
 the existing secrets are of the "single-line secret" format.
 
 ## Commands
 
 ### Reading secrets
 
-`passage get [--clip] [--line=LINE] [--qrcode] SECRET_NAME`
-- Outputs the entire content of `SECRET_NAME`
+`passage get [-c, --clip] [-l, --line=LINE] [-q, --qrcode] [-s, --singleline] SECRET_NAME`
+- Outputs the content of the text of the secret in `SECRET_NAME`, excluding comments
 
-`passage secret [--clip] [--qrcode] SECRET_NAME`
-- Outputs only the secret content of `SECRET_NAME`. Specifically, comments are excluded.
+`passage secret [-c, --clip] [-l, --line=LINE] [-q, --qrcode] [-s, --singleline] SECRET_NAME`
+- An alias of `passage get`
 
-`passage head [--clip] [--qrcode] SECRET_NAME`
-- Outputs the first line of `SECRET_NAME`, and errors out on multiline secrets
+`passage cat [-c, --clip] [-l, --line=LINE] [-q, --qrcode] SECRET_NAME`
+- Outputs the whole content of the secret in `SECRET_NAME`, including comments
 
-`passage template TEMPLATE_FILE TARGET_FILE [KEY=VALUE]...`
-- Generates `TARGET_FILE` by substituting all secrets in `TEMPLATE_FILE` based on the key-value mappings provided if any.
-- Secrets in `TEMPLATE_FILE` are denoted with the following format `{{{secret_name}}}`. In particular, note the following:
+`passage show SECRET_NAME`
+- Outputs the whole content of the secret in `SECRET_NAME`, including comments. Behaves differently when used with PATHs, please check below.
+
+### Templating with secrets
+
+`passage template TEMPLATE_FILE [TARGET_FILE]`
+- Generates `TARGET_FILE` by substituting all secrets in `TEMPLATE_FILE`
+- Secrets in `TEMPLATE_FILE` are denoted with the following format `{{{subdir/secret_name}}}`. In particular, note the following:
   - Three opening and closing braces
   - No leading and trailing whitespaces before and after `secret_name`
-  - `secret_name` must start with an alphabetical character (either lowercase or uppercase), followed by 0 or more alphanumeric characters, underscores, hyphens, slashes, or dots (reference: [template_lexer.ml](lib/template_lexer.ml))
-- A key-value pair maps an identifier in the `TEMPLATE_FILE` to a secret name.
+  - `secret_name` must start with an alphanumeric character (either lowercase or uppercase), followed by 0 or more alphanumeric characters, underscores, hyphens, slashes, or dots (reference: [template_lexer.ml](lib/template_lexer.ml))
 
 - Example when substituting a single-line secret:
   ```sh
@@ -75,9 +93,7 @@ the existing secrets are of the "single-line secret" format.
   thesupersecretkey
   the above is the sendgrid api key!
 
-  $ passage template_file target_file
-
-  $ cat target_file
+  $ passage template template_file
   {
     "non_secret_config1": "hello",
     "sendgrid_api_key": "thesupersecretkey",
@@ -85,7 +101,7 @@ the existing secrets are of the "single-line secret" format.
   }
   ```
 
-- Example when substituting a multiline secret:
+- Example when substituting a multi-line secret:
   ```sh
   $ cat template_file
   foo{{{multiline_secret}}}bar
@@ -98,23 +114,62 @@ the existing secrets are of the "single-line secret" format.
   secret_line 1
   secret_line 2
 
-  $ passage template_file target_file
+  $ passage template template_file target_file
 
   $ cat target_file
   foosecret_line 1
   secret_line 2bar
   ```
 
+`passage subst [TEMPLATE_ARG]`
+- similar to passage template, but you pass in a string template and the result is output to stdout
+  ```bash
+  $ passage secret test/secret
+  unbelievable stuff
+
+  $ passage subst "This secret is {{{test/secret}}}"
+  This secret is unbelievable stuff
+  ```
+
+`passage template-secrets [TEMPLATE_FILE]`
+- returns a list of sorted secrets identified in that template file per the parse format
+- secrets are not checked for existence
+
+### Specifying recipients
+
+Secrets' recipients are specified in the `.keys` file in the immediately containing folder.  The first time a folder is used, passage will create this file. If no recipients are specified, it falls back to the caller as the sole recipient based on the file referenced by `$PASSAGE_IDENTITY`.
+
+Recipients are not inherited from containing (parent) folders. Recipients in a folder can only be increased when added by the existing recipients.
+
+All secrets in a given folder must share the same set of recipients.
+
+`passage edit-who SECRET_NAME`
+- edit the recipients for the specified secret (and path).
+
 ### Creating or updating secrets
 
-`passage edit SECRET_NAME`
-- Allows editing of `SECRET_NAME` using `$EDITOR`
+`passage new SECRET_NAME`
+- Interactive secret creation using `$EDITOR` and prompts.
+- Can only be used in interactive shell
 
-`passage append SECRET_NAME`
-- Appends the user input to `SECRET_NAME`
+`passage create SECRET_NAME`
+- Creates a secret using contents from standard input. Use Ctrl+d twice to signal end of input.
+- Can pipe from another command into `passage create`. E.g.:
+```bash
+$ echo "secret" | passage create secret_folder/secret
+```
+
+`passage edit SECRET_NAME`
+- Interactive editing of `SECRET_NAME` using `$EDITOR`
+- Can only be used in interactive shell
 
 `passage replace SECRET_NAME`
-- Replaces `SECRET_NAME` with the user input
+- Replaces `SECRET_NAME`'s secret with the user input and keeps the comments. Use Ctrl+d twice to signal end of input.
+- If you use `replace` on a secret that doesn't exist, it creates a new secret without comments (only in folders where the user is already a recipient)
+
+`passage rm [--force] [--verbose] SECRET_NAME / passage delete [--force] [--verbose] SECRET_NAME`
+- Deletes `SECRET_NAME` path
+- If `SECRET_NAME` is the only secret in that folder, passage deletes the whole folder
 
 ### Managing secrets
 
@@ -126,12 +181,13 @@ the existing secrets are of the "single-line secret" format.
 
 `passage show [PATH]`
 - Recursively list all secrets in `PATH` in a tree-like format
+- Will work the same way as `cat` when used with secret names instead of a PATH. Doesn't take any arguments or flags
 
 `passage refresh [PATH]`
-- Re-encrypts all secrets in `PATH`
+- Re-encrypts all secrets in `PATH` per the recipients in the corresponding .keys file
 
 `passage who [PATH]`
-- List all recipients of secrets in `PATh`
+- List all recipients of secrets in `PATH`
 
 `passage what RECIPIENT_NAME`
 - List all secrets that `RECIPIENT_NAME` has access to
@@ -156,3 +212,11 @@ the existing secrets are of the "single-line secret" format.
 
 `PASSAGE_CLIP_TIME`
 - Overrides the default clip time. Specified in seconds.
+
+## Utilities
+
+`passage healthcheck`
+- checks for issues with secrets, and for directories without `.keys` file
+
+`passage realpath [--verbose] [PATH]`
+- show the full filesystem path to secrets/folders

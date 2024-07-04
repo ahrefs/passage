@@ -1,146 +1,188 @@
   $ . ./setup_fixtures.sh
 
-Encrypt a secret file with identity
-  $ TEST_SECRET=test_secret
-  $ cat <<EOF | age -r $(age-keygen -y $PASSAGE_IDENTITY) > $PASSAGE_DIR/secrets/$TEST_SECRET.age
-  > secret line 1
-  > secret line 2
-  > secret line 3\123\65
-  > EOF
-
-Should succeed - access contents of secret file with correct identity
-  $ passage get $TEST_SECRET
-  secret line 1
-  secret line 2
-  secret line 3\123\65
-
-Should succeed - without -c or -q, specifying line number output specified line
-  $ passage get --line=2 $TEST_SECRET
-  secret line 2
-
-Should succeed - passing -q without line number specified should display entire secret
-  $ passage get -q $TEST_SECRET
+Should succeed and display only secret without comments - single line secret without comments
+  $ setup_singleline_secret_without_comments single_line_no_comments
+ Print to stdout
+  $ passage get single_line_no_comments
+  (single_line_no_comments) secret: single line
+ Print as QRCode
+  $ passage get -q single_line_no_comments
   █████████████████████████████████████████
   █████████████████████████████████████████
-  ████ ▄▄▄▄▄ █▄ █ ██▄▄  ▄▀▀▀██▄█ ▄▄▄▄▄ ████
-  ████ █   █ █▀█▀▄ ▄▀▀ ▀▀██ █ ▀█ █   █ ████
-  ████ █▄▄▄█ █  ▄▄▄ ▄▀▄▄▄▄▀ ▄▄ █ █▄▄▄█ ████
-  ████▄▄▄▄▄▄▄█ █▄█▄█ █▄▀▄▀ ▀ █▄█▄▄▄▄▄▄▄████
-  ████ █▀▀ █▄▄▄ █▀ █▀   ▀█   ▀▀ ▄ ▄ ▀█▄████
-  ████  █ ▀ ▄█▀ ▀ █ ▄▄ █▄█▀ ▀ █ █  ██ █████
-  █████ █▄  ▄▀▀▄▀██ ▀▄▀▀▀ ▄▄▀▀▀ ▄▀▄▀▀▀▄████
-  ████▄███ █▄█▀██▀▀▀▀█▄ ▀ ▀▀▄ ▄▄▄▄█ █ ▀████
-  ████▄▀▀  ▄▄ █▀▀▄▄▀ ▄█ ▀██▄▄▀ ▀▄█▄█▀ ▄████
-  ████▀▄███▄▄ █▀█ ▀ ▀▄ █▄█ ▀▀  ██▄ █▄▄▀████
-  ████▀▀█▀ ▀▄▄█ ▄▀ █ █▀▀▀ ▄▄▀▀▀▄▄▀▄▄▀▄▄████
-  ██████▀▀▀▄▄▀▄ ▀▀▄ ▀█▄▀▄ ▀ █ ▀▀▄▀▄▄█ █████
-  ████▄▄▄▄█▄▄█▀█▄▄▀ █ ▄ ▀█▄▄▄▄ ▄▄▄ █▀▄▄████
-  ████ ▄▄▄▄▄ █▄▀█ ▄▀▄  █▄▀█ ██ █▄█ ▄▄ ▀████
-  ████ █   █ █▄█▀▄ ▄ █▀█▀  ███▄▄   ▀█▄▄████
-  ████ █▄▄▄█ ██  █ █ █▄  ▀█▀▄█▄█▄█ ▄███████
-  ████▄▄▄▄▄▄▄█▄█▄▄▄▄█▄█▄▄██▄▄▄▄██▄████▄████
+  ████ ▄▄▄▄▄ █▀▄█▄  ▄ ▀▀ ▄▄▀▀ ▀█ ▄▄▄▄▄ ████
+  ████ █   █ █▄▄ ▀█▀█▄██ ▄▄█   █ █   █ ████
+  ████ █▄▄▄█ ██▀▄▀▀██▄▄▀▀ █ ██ █ █▄▄▄█ ████
+  ████▄▄▄▄▄▄▄█▄█ ▀▄█▄▀ ▀▄▀▄█▄▀▄█▄▄▄▄▄▄▄████
+  █████   █ ▄████ ▀▀▀▄█ ▄▀▀ █▄▄▀████ ▄▀████
+  ████▀▀▀▄ ▀▄▀ ▄▄▀▄  ▄ ██▀▀▄▄▄ ▄▄ ▀▀▄█▄████
+  ████▀▄▀█▄▀▄█  ▄▀█▄▄▄ ▀▄ █▀▄█  █ ▄▀█▀▄████
+  ████▀▀ █▀▄▄ ▄▀▀▀  ▀▀█▄█▄▄ ▀▀ ▀ ▀█▀▀██████
+  ████▀█▄▀▄▄▄█▀ ▄▄ ▄▄ ▀▀▀▄ ▀▄ ▀  ▀ █ ▀▀████
+  █████ ▄█▀▄▄▄▄█▄    ▄▄▄▄█▄▄▄█ ▄▀ ▀▄▄▀█████
+  ████  ▄▀▄▄▄ ▄▄▀▀▄█▄▀▄▀▄▀▀▄█ ▄ ▀▄██ ▄▀████
+  █████▀▄ ██▄▀█▀█▄█▄▀█▄▄ ▀ ▄▄▄█ █▄ ▀▄▀ ████
+  ████▄███▄█▄▄▀█▀▄  ▀█ ▀  ██▄▀ ▄▄▄ █▀ ▄████
+  ████ ▄▄▄▄▄ █▀▄▀▄▀▀█  █▀  ▀▀  █▄█ ▀ ██████
+  ████ █   █ █▀  ▀█▄▀█▄▀ ▄ ▄▀ ▄▄▄▄▄ ▄  ████
+  ████ █▄▄▄█ █ ██████  ▄▀█▀█▀▀▀█▄▀▀▄▄█▀████
+  ████▄▄▄▄▄▄▄██▄█▄▄▄██▄▄█▄█▄███▄▄▄▄█▄██████
   █████████████████████████████████████████
   █████████████████████████████████████████
 
-Should succeed - passing -q with line number specified
-  $ passage get -q -l2 $TEST_SECRET
-  █████████████████████████████
-  █████████████████████████████
-  ████ ▄▄▄▄▄ ██▄█▄ █ ▄▄▄▄▄ ████
-  ████ █   █ █ ▄▄ ██ █   █ ████
-  ████ █▄▄▄█ █ ▀█▀▄█ █▄▄▄█ ████
-  ████▄▄▄▄▄▄▄█ ▀▄█▄█▄▄▄▄▄▄▄████
-  ████ ▀    ▄▀██ ▄▀▀     █▀████
-  ████▄  ▀▀█▄██▀ █▄▀█▀█   ▀████
-  █████▄▄▄▄█▄▄ ▄█▀▄█  ▀█▀▀▀████
-  ████ ▄▄▄▄▄ █▀▀██  █ █ ▀ █████
-  ████ █   █ █ ▀▄█▄▀ █▀▄▀▄▄████
-  ████ █▄▄▄█ █▄  ▀ ▀▄██▀▀██████
-  ████▄▄▄▄▄▄▄█▄▄█▄▄█▄████▄█████
-  █████████████████████████████
-  █████████████████████████████
+Should succeed and display only secret without comments - single line secret with comments
+  $ setup_singleline_secret_with_comments single_line_with_comments
+ Print to stdout
+  $ passage get single_line_with_comments
+  (single_line_with_comments) secret: single line
+ Print as QRCode
+  $ passage get -q single_line_with_comments
+  █████████████████████████████████████████
+  █████████████████████████████████████████
+  ████ ▄▄▄▄▄ ██▄ ▀  ▀▀  ▄▄ ▀▄▄██ ▄▄▄▄▄ ████
+  ████ █   █ █    ▄▄▀▀█▄▄▀▄▄  ▀█ █   █ ████
+  ████ █▄▄▄█ █  █▀▀█▀▄▄▄▄▀▄▄▀▄▀█ █▄▄▄█ ████
+  ████▄▄▄▄▄▄▄█ █▄█▄█ █ █▄▀ ▀ █▄█▄▄▄▄▄▄▄████
+  ████▄▀▄ ▄ ▄▀█ ▄▀▄ ▄█  ▀ ▀█▄▄█▀▄▄▄▄ ▀▀████
+  ████ ▄▄█▀▀▄▄▀███▄ ▄ █ ▀▀ ▀▄██▄ ██ ▀ █████
+  ██████ ▀▀ ▄ ▄  ▄▀▀▄ ▀█▀▄▀█▄▀▄▄▀▄▄▀▀ ▀████
+  ████▀ █▀█ ▄▀ ▀█▄▀▄ █▀██ ▀ ▀█   ▀▀█ ▄█████
+  █████ ██ ▄▄▀▀▄▄▄▀█▄██ ▀ ▀▀ ▀▄▄▀▄▄▄██ ████
+  ████▄▄ ██ ▄█▀ ▄███▀ ▄ ▀▀▄  ▀▄ ▀▄▀  ▄▀████
+  ████  ▄█ ▀▄█▄▀ █▄█▀▀▀▀▀█▀ █  ▄▀▄▄███▀████
+  ████ █▀▄▀▄▄█▄▄ ▀█▄██▀▄▀ ▀ ▄██▄▄▀▄█▀██████
+  ████▄█▄███▄█▀▄█▄█▄ ██ █ ▀█▄█ ▄▄▄ ▀█▀▀████
+  ████ ▄▄▄▄▄ █▀█   ▀▀▄▄ ▀▀ ▀█  █▄█ ▀▀ ▀████
+  ████ █   █ █ ▀▀▀▀▄▄ ▀█▀▄▀▄█▀  ▄  █▀▀▀████
+  ████ █▄▄▄█ █▄  ▄████▀█▀ ▀ ███▀ █▀▀ ██████
+  ████▄▄▄▄▄▄▄█▄█▄███▄█▄▄█▄▄▄▄▄▄████▄█▄█████
+  █████████████████████████████████████████
+  █████████████████████████████████████████
 
-NOTE: The below tests for tests for the -c flag are not executed as it depends on whether there's an X11 display on the machine running the tests
+Should succeed and display only secret without comments - multiline secret without comments
+  $ setup_multiline_secret_without_comments multiline_no_comments
+ Print to stdout
+  $ passage get multiline_no_comments
+  (multiline_no_comments) secret: line 1
+  (multiline_no_comments) secret: line 2
+ Print as QRCode
+  $ passage get -q multiline_no_comments
+  █████████████████████████████████████████████
+  █████████████████████████████████████████████
+  ████ ▄▄▄▄▄ █▀█▄ ▀█   █▀█▄ ▄█▀▀ █▀█ ▄▄▄▄▄ ████
+  ████ █   █ █  █▄▄▄▀█ ▀██▀ ▄▄▄▀▄▄ █ █   █ ████
+  ████ █▄▄▄█ ██▀▄ ▄▀ ▀ ▀ ▄▄▄▀▄▀ ▀█ █ █▄▄▄█ ████
+  ████▄▄▄▄▄▄▄█ █▄█ █ █ █ █ █ █ █▄▀▄█▄▄▄▄▄▄▄████
+  ████ █▀█▀█▄█ ▀▄██▀▄██▀  ▀█▄▀█ ▄ █▄▄▀▀▄▄ █████
+  █████▄▄ ▀▀▄██▀ ▄▄▀▀▀▀▄▀█ ▄ ▀▀█ ▄ ▄█▀ ▀█  ████
+  ████▄▄ █▄▀▄▀█▀ ▄▀  ▀▀▀▀  ██  ██▀ █▄ █ ███████
+  ████ █ ▄▀▄▄██▀█ ▄▀█▄▄▄ █▀▄ █▀█  ▄ █▄█▀▀▄ ████
+  █████ ▀ ▄█▄ ▄▄▀██ ▄█▀█ ▀▀█▀ ▄  ▀▀  ▀▄  ▄▄████
+  ████▀█ ▀▀ ▄█▀▄▄ ▀▄▀▀ ▄█  █ ▄█▄▀▄▀▀ ▀▀ ▄█ ████
+  ████▄█▄███▄▀ ▀▀▀ ▀█▀█   ▀▀▄▀ ▄ █▄  ▀  ▄▀█████
+  ████ ██▄  ▄▄█▀ ▄ ▀ ▄█ ▀▀███▀▀▄▀   █▀▀ █▄ ████
+  ████▀█▀▀  ▄▀ ▄██  ▀█ ▄▀▀ █▄ ▄█▄▀ █▄▀▄█▀██████
+  ████ ██▀█▀▄▄█▀▀▀██ ▀██ █ █▀▀▀█▄ ▄ █ ▀▀▀█▄████
+  ████▄█▄█▄▄▄█ █▄▄█ █▀█ ▄ ▄█▄▀█ ▄█ ▄▄▄  ▄▄█████
+  ████ ▄▄▄▄▄ ██▀ ▄▄█  ▄▀▀▄ ▄▄▄▄▄ ▀ █▄█  ▄▀ ████
+  ████ █   █ ██▀▄██▄▀███▀▀██ ▀█ ▀▄▄  ▄▄ ▄▄ ████
+  ████ █▄▄▄█ ███▄▀▄▄ ▀▀█▄█▀▄ █ ▄▄█ █▀ █ ▄▄ ████
+  ████▄▄▄▄▄▄▄█▄▄█▄█▄██▄▄▄████▄████▄██▄█▄██▄████
+  █████████████████████████████████████████████
+  █████████████████████████████████████████████
 
-Should succeed - passing -c without line number specified should display line number 1
-$ passage get -c $TEST_SECRET && xclip -selection "clipboard" -o
-Copied test_secret to clipboard. Will clear in 45 seconds.
-line 1
+Should succeed and display only secret without comments - multiline secret comments
+  $ setup_multiline_secret_with_comments multiline_with_comments
+ Print to stdout
+  $ passage get multiline_with_comments
+  (multiline_with_comments) secret: line 1
+  (multiline_with_comments) secret: line 2
+ Print as QRCode
+  $ passage get -q multiline_with_comments
+  █████████████████████████████████████████████
+  █████████████████████████████████████████████
+  ████ ▄▄▄▄▄ ██▀▀█  ▀  █ ▄▄▀▄▄▀ ▀▀ █ ▄▄▄▄▄ ████
+  ████ █   █ █ ▀▄▀██   ▀▄▀▄▄▄█ ▀ ▀▀█ █   █ ████
+  ████ █▄▄▄█ █ █   █▄  ▄ ▄█▄█▄▄ ▀ ▄█ █▄▄▄█ ████
+  ████▄▄▄▄▄▄▄█ █▄▀▄▀ ▀ █▄▀▄▀ ▀ █ ▀▄█▄▄▄▄▄▄▄████
+  ████▄▀ ▄▄ ▄▀█▄▀▄█▄▄ ▀ ▀ ▀▀▄▀ ▄▄█▀▀  ▄▄ ▀█████
+  █████▄  ▄▄▄   ▄▄ ▄██▀█▀██ ██▀▄▀▄ ▄█ █▄█  ████
+  ████▄▀█▀█▀▄▀ ▀  ▄ ▄██ ▀▀▄▀  █ ▄█▀▄▄▀▄█▄▄█████
+  ████▀▄▀▀▀█▄█ ▀▀ ██▀▄█▄▀█▀  █▄█  ▀ █▄▀██  ████
+  ████▀ ▄▀▀█▄ ▄ ▀▀▀▄▀▀▀ ▀▀█▀▄▀  ▄   ▄▀▄▄▄▄▄████
+  █████ ▀█▄▄▄██▄▄ █▀ █▀█▄▀█▀▀▀▀▄  █  ▀ ▄█▄ ████
+  ████ █▄▄ █▄▄██ █  ▀▀█▄▀  ▀▄▀█ ▄█   ▀▄▄ ▀█████
+  ████  ▄▀▀ ▄▀▀▀▀█ ▀▄ ▄███ ▀▀▀▄█  ▄ ▄▀▀▄█  ████
+  ████ ▀▄ █▀▄▀▄ ▄▀▀█▀ █  ▀▄▀  █ ▄█▀▄▄▀▄▀ ▄█████
+  ████ █ █ █▄ ▀▄█▀ █ ▄█▄▀█▀  █▄█  ▀ █▄▀███▄████
+  ████▄███▄█▄█▀▄▄▄▀  █▄▄▀▀▀▀▄▀▄▄▄  ▄▄▄ ▄▄█▄████
+  ████ ▄▄▄▄▄ █▀▄ ▀▄ ▄ ██ ▀█▀████ █ █▄█ ▄█▄ ████
+  ████ █   █ █ ▄▀▀▀ ▄ █▄▄▀ ▀▄▀█ ▄▄   ▄ ▄ ▀▀████
+  ████ █▄▄▄█ █▄ ▀ ▄▄█▄████ ▀▀▀▄█ █▀▄█ █▄█▄ ████
+  ████▄▄▄▄▄▄▄█▄▄▄█▄▄▄▄█▄▄█▄█▄▄▄▄▄██▄▄█▄▄▄▄▄████
+  █████████████████████████████████████████████
+  █████████████████████████████████████████████
 
-Should succeed - passing -c with line number specified
-$ passage get -c -l2 $TEST_SECRET && xclip -selection "clipboard" -o
-Copied test_secret to clipboard. Will clear in 45 seconds.
-line 2
-
-Clipboard should be restored after PASSAGE_CLIP_TIME
-$ export INITIAL_CLIPBOARD="a\123b"
-$ export PASSAGE_CLIP_TIME=5
-$ printf "%s" $INITIAL_CLIPBOARD | xclip -selection "clipboard"
-$ passage get -c -l2 $TEST_SECRET && sleep $((1 + $PASSAGE_CLIP_TIME)) && xclip -selection "clipboard" -o
-Copied test_secret to clipboard. Will clear in 5 seconds.
-a\123b
-$ unset INITIAL_CLIPBOARD PASSAGE_CLIP_TIME
-
-
-Should fail - line number that does not correspond to any text
-  $ passage get -q -l100 $TEST_SECRET
-  There is no secret at line 100
+Should fail - non-existent secret
+  $ passage get non_existent_secret
+  E: no such secret: non_existent_secret
   [1]
-  $ passage get -c -l100 $TEST_SECRET
-  There is no secret at line 100
+
+Should fail - user is not authorised to view secret
+  $ UNAUTHORISED_USER="unauthorised"
+  $ setup_identity $UNAUTHORISED_USER
+  $ PASSAGE_IDENTITY=$UNAUTHORISED_USER.key passage get single_line_no_comments
+  age: error: no identity matched any of the recipients
+  age: report unexpected or unhelpful errors at https://filippo.io/age/report
+  E: failed to decrypt single_line_no_comments : Failure("age --decrypt --identity $TESTCASE_ROOT/unauthorised.key : exit code 1")
   [1]
 
-Should fail - passing invalid number to -q and -c
-  $ passage get -q -lnot_a_number $TEST_SECRET
-  passage: option '-l': invalid value 'not_a_number', expected an integer
-  Usage: passage get [--clip] [--line=LINE] [--qrcode] [OPTION]… SECRET_NAME
-  Try 'passage get --help' or 'passage --help' for more information.
-  [124]
-  $ passage get -c -lnot_a_number $TEST_SECRET
-  passage: option '-l': invalid value 'not_a_number', expected an integer
-  Usage: passage get [--clip] [--line=LINE] [--qrcode] [OPTION]… SECRET_NAME
-  Try 'passage get --help' or 'passage --help' for more information.
-  [124]
+Should succeed and display only secret without comments when using the -s for single line secret with comments
+  $ passage get -s single_line_with_comments
+  (single_line_with_comments) secret: single line
+ Check that comments were present in the secret and correctly dropped from the above command
+  $ passage cat single_line_with_comments
+  (single_line_with_comments) secret: single line
+  
+  (single_line_with_comments) comment: line 1
+  (single_line_with_comments) comment: line 2
 
-Should fail - passing in both -c and -q flags
-  $ passage get -c -q $TEST_SECRET
-  passage: options '-q' and '-c' cannot be present at the same time
-  Usage: passage get [--clip] [--line=LINE] [--qrcode] [OPTION]… SECRET_NAME
-  Try 'passage get --help' or 'passage --help' for more information.
-  [124]
+Should fail - multiline secret when using the -s flag
+  $ passage get -s multiline_no_comments
+  E: multiline_no_comments is expected to be a single-line secret but it is a multi-line secret
+  [1]
 
-Should fail - passing in invalid secret names
-  $ passage get ..
-  passage: SECRET_NAME argument: .. is not a valid secret
-  Usage: passage get [--clip] [--line=LINE] [--qrcode] [OPTION]… SECRET_NAME
-  Try 'passage get --help' or 'passage --help' for more information.
-  [124]
-  $ passage get ../
-  passage: SECRET_NAME argument: ../ is not a valid secret
-  Usage: passage get [--clip] [--line=LINE] [--qrcode] [OPTION]… SECRET_NAME
-  Try 'passage get --help' or 'passage --help' for more information.
-  [124]
-  $ passage get /..
-  passage: SECRET_NAME argument: /.. is not a valid secret
-  Usage: passage get [--clip] [--line=LINE] [--qrcode] [OPTION]… SECRET_NAME
-  Try 'passage get --help' or 'passage --help' for more information.
-  [124]
-  $ passage get /../
-  passage: SECRET_NAME argument: /../ is not a valid secret
-  Usage: passage get [--clip] [--line=LINE] [--qrcode] [OPTION]… SECRET_NAME
-  Try 'passage get --help' or 'passage --help' for more information.
-  [124]
-  $ passage get /../$TEST_SECRET
-  E: no such secret: /../test_secret
+  $ passage get -s multiline_with_comments
+  E: multiline_with_comments is expected to be a single-line secret but it is a multi-line secret
   [1]
-  $ passage get $TEST_SECRET/..
-  passage: SECRET_NAME argument: test_secret/.. is not a valid secret
-  Usage: passage get [--clip] [--line=LINE] [--qrcode] [OPTION]… SECRET_NAME
-  Try 'passage get --help' or 'passage --help' for more information.
-  [124]
-  $ passage get 01/../00
-  E: no such secret: 01/../00
-  [1]
-  $ passage get invalid_secret
-  E: no such secret: invalid_secret
-  [1]
+
+Should succeed using the -n flag to remove the new-line character at the end of the output.
+Default is to add a new-line character at the end
+  $ passage get single_line_no_comments | wc -c
+  46
+  $ passage get -n single_line_no_comments | wc -c
+  45
+  $ passage get single_line_with_comments | wc -c
+  48
+  $ passage get -n single_line_with_comments | wc -c
+  47
+  $ passage get multiline_no_comments | wc -c
+  78
+  $ passage get -n multiline_no_comments | wc -c
+  77
+  $ passage get multiline_with_comments | wc -c
+  82
+  $ passage get -n multiline_with_comments | wc -c
+  81
+
+Should succeed - decrypting a secret by a member of a group
+  $ passage who 03/secret1
+  @root
+  host/a
+  poppy.pop
+  $ passage who @root
+  robby.rob
+  tommy.tom
+  $ PASSAGE_IDENTITY=robby.rob.key passage get 03/secret1
+  (03/secret1) secret: single line
+  $ PASSAGE_IDENTITY=tommy.tom.key passage get 03/secret1
+  (03/secret1) secret: single line

@@ -2,102 +2,168 @@
 
 Should succeed - no path specified
   $ passage show
-  $TESTCASE_ROOT/fixtures/secrets
-  |-- 00
-  |   |-- .secret_starting_with_dot
-  |   `-- secret1
-  |-- 01
-  |   |-- 00
-  |   |   |-- secret1
-  |   |   `-- secret2
-  |   `-- secret1
-  `-- 02
-      `-- secret1
+  .
+  ├── 00
+  │   ├── .secret_starting_with_dot
+  │   └── secret1
+  ├── 01
+  │   ├── 00
+  │   │   ├── secret1
+  │   │   └── secret2
+  │   └── secret1
+  ├── 02
+  │   └── secret1
+  ├── 03
+  │   └── secret1
+  ├── 04
+  │   └── secret1
+  └── 05
+      └── secret1
 
 Should succeed - curr dir as path
   $ passage show .
-  $TESTCASE_ROOT/fixtures/secrets
-  |-- 00
-  |   |-- .secret_starting_with_dot
-  |   `-- secret1
-  |-- 01
-  |   |-- 00
-  |   |   |-- secret1
-  |   |   `-- secret2
-  |   `-- secret1
-  `-- 02
-      `-- secret1
+  .
+  ├── 00
+  │   ├── .secret_starting_with_dot
+  │   └── secret1
+  ├── 01
+  │   ├── 00
+  │   │   ├── secret1
+  │   │   └── secret2
+  │   └── secret1
+  ├── 02
+  │   └── secret1
+  ├── 03
+  │   └── secret1
+  ├── 04
+  │   └── secret1
+  └── 05
+      └── secret1
 
 Should succeed - single-level path
   $ passage show 01
-  $TESTCASE_ROOT/fixtures/secrets/01
-  |-- 00
-  |   |-- secret1
-  |   `-- secret2
-  `-- secret1
+  .
+  ├── 00
+  │   ├── secret1
+  │   └── secret2
+  └── secret1
 
 Should succeed - single-level path with trailing slash
   $ passage show 01/
-  $TESTCASE_ROOT/fixtures/secrets/01
-  |-- 00
-  |   |-- secret1
-  |   `-- secret2
-  `-- secret1
+  .
+  ├── 00
+  │   ├── secret1
+  │   └── secret2
+  └── secret1
 
 Should succeed - multi-level path
   $ passage show 01/00
-  $TESTCASE_ROOT/fixtures/secrets/01/00
-  |-- secret1
-  `-- secret2
+  .
+  ├── secret1
+  └── secret2
 
 Should succeed - valid secret path that ends with ..
   $ passage show 01/..
-  $TESTCASE_ROOT/fixtures/secrets
-  |-- 00
-  |   |-- .secret_starting_with_dot
-  |   `-- secret1
-  |-- 01
-  |   |-- 00
-  |   |   |-- secret1
-  |   |   `-- secret2
-  |   `-- secret1
-  `-- 02
-      `-- secret1
+  .
+  ├── 00
+  │   ├── .secret_starting_with_dot
+  │   └── secret1
+  ├── 01
+  │   ├── 00
+  │   │   ├── secret1
+  │   │   └── secret2
+  │   └── secret1
+  ├── 02
+  │   └── secret1
+  ├── 03
+  │   └── secret1
+  ├── 04
+  │   └── secret1
+  └── 05
+      └── secret1
 
 Should succeed - valid secret path that includes .. in the middle
   $ passage show 01/../00
-  $TESTCASE_ROOT/fixtures/secrets/00
-  |-- .secret_starting_with_dot
-  `-- secret1
+  .
+  ├── .secret_starting_with_dot
+  └── secret1
 
-Should fail - path that goes out of secrets dir
+Should succeed - path that goes out of secrets dir points to the root
   $ passage show ..
-  passage: PATH argument: the path is out of the secrets dir -
-           $TESTCASE_ROOT/fixtures
-  Usage: passage show [OPTION]… [PATH]
-  Try 'passage show --help' or 'passage --help' for more information.
-  [124]
+  .
+  ├── 00
+  │   ├── .secret_starting_with_dot
+  │   └── secret1
+  ├── 01
+  │   ├── 00
+  │   │   ├── secret1
+  │   │   └── secret2
+  │   └── secret1
+  ├── 02
+  │   └── secret1
+  ├── 03
+  │   └── secret1
+  ├── 04
+  │   └── secret1
+  └── 05
+      └── secret1
 
   $ passage show ../
-  passage: PATH argument: the path is out of the secrets dir -
-           $TESTCASE_ROOT/fixtures
-  Usage: passage show [OPTION]… [PATH]
-  Try 'passage show --help' or 'passage --help' for more information.
-  [124]
+  .
+  ├── 00
+  │   ├── .secret_starting_with_dot
+  │   └── secret1
+  ├── 01
+  │   ├── 00
+  │   │   ├── secret1
+  │   │   └── secret2
+  │   └── secret1
+  ├── 02
+  │   └── secret1
+  ├── 03
+  │   └── secret1
+  ├── 04
+  │   └── secret1
+  └── 05
+      └── secret1
 
   $ passage show /..
-  passage: PATH argument: the path is out of the secrets dir -
-           $TESTCASE_ROOT/fixtures
-  Usage: passage show [OPTION]… [PATH]
-  Try 'passage show --help' or 'passage --help' for more information.
-  [124]
+  .
+  ├── 00
+  │   ├── .secret_starting_with_dot
+  │   └── secret1
+  ├── 01
+  │   ├── 00
+  │   │   ├── secret1
+  │   │   └── secret2
+  │   └── secret1
+  ├── 02
+  │   └── secret1
+  ├── 03
+  │   └── secret1
+  ├── 04
+  │   └── secret1
+  └── 05
+      └── secret1
 
   $ passage show /../
-  passage: PATH argument: the path is out of the secrets dir -
-           $TESTCASE_ROOT/fixtures
-  Usage: passage show [OPTION]… [PATH]
-  Try 'passage show --help' or 'passage --help' for more information.
-  [124]
+  .
+  ├── 00
+  │   ├── .secret_starting_with_dot
+  │   └── secret1
+  ├── 01
+  │   ├── 00
+  │   │   ├── secret1
+  │   │   └── secret2
+  │   └── secret1
+  ├── 02
+  │   └── secret1
+  ├── 03
+  │   └── secret1
+  ├── 04
+  │   └── secret1
+  └── 05
+      └── secret1
 
 Should fail - single-level invalid path
   $ passage show invalid_path
@@ -109,7 +175,32 @@ Should fail - multi-level invalid path
   No secrets at this path : $TESTCASE_ROOT/fixtures/secrets/01/invalid_path
   [1]
 
-# Should fail and suggest using get command
+Should behave as cat when using on secrets paths
+Setup a couple of secrets
+  $ echo "secret" | passage create singleline_secret
+  $ cat <<EOF | passage create multiline_secret
+  > 
+  > 
+  > secret line 1
+  > secret line 2
+  > secret line 3\123\65
+  > EOF
+
+Should succeed - access contents of secret file with correct identity
+  $ passage cat singleline_secret
+  secret
+  $ passage cat multiline_secret
+  
+  
+  secret line 1
+  secret line 2
+  secret line 3\123\65
+
+
+
+Should try to decrypt and fail if not a recipient of the secret
   $ passage show 01/00/secret2
-  Did you mean : passage get 01/00/secret2
+  age: error: no identity matched any of the recipients
+  age: report unexpected or unhelpful errors at https://filippo.io/age/report
+  E: failed to decrypt 01/00/secret2 : Failure("age --decrypt --identity $TESTCASE_ROOT/bobby.bob.key : exit code 1")
   [1]

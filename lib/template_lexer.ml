@@ -14,8 +14,7 @@ let to_string token =
   | EOF -> "EOF"
 
 let iden_letter = [%sedlex.regexp? 'a' .. 'z' | 'A' .. 'Z' | '_' | '-' | '/' | '.' | '0' .. '9']
-let iden_start = [%sedlex.regexp? 'a' .. 'z' | 'A' .. 'Z']
-let iden_fragment = [%sedlex.regexp? iden_start, Star iden_letter]
+let iden_fragment = [%sedlex.regexp? iden_letter, Star iden_letter]
 
 let braces = [%sedlex.regexp? '{' | '}']
 let text = [%sedlex.regexp? Plus (Compl braces)]

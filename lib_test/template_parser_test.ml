@@ -1,4 +1,3 @@
-open Devkit
 open Passage
 
 let pp ast = List.map Template_ast.to_string ast |> String.concat " " |> print_endline
@@ -8,7 +7,7 @@ let test_parse_failure s =
   try
     let (_ : Template_ast.ast) = Template.parse s in
     ()
-  with exn -> print_endline (Exn.to_string exn)
+  with exn -> print_endline (Devkit.Exn.to_string exn)
 
 let%expect_test "empty string" =
   test_parse_success "";
@@ -38,9 +37,9 @@ let%expect_test "paired triple braces - empty" =
   test_parse_success "{{{}}}";
   [%expect {| Text("{{{}}}") |}]
 
-let%expect_test "paired triple braces with special character as first char of identifier" =
-  test_parse_success "{{{_abcdefghi}}}";
-  [%expect {| Text("{{{_abcdefghi}}}") |}]
+let%expect_test "leading digits are ok" =
+  test_parse_success "{{{00abc}}}";
+  [%expect {| Iden("00abc") |}]
 
 let%expect_test "paired triple braces with whitespace" =
   test_parse_success "{{{  abcdefghi    }}}";

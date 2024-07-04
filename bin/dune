@@ -2,6 +2,6 @@
  (name main)
  (public_name passage)
  (package passage)
- (libraries cmdliner devkit lwt.unix passage qrc re2)
+ (libraries cmdliner devkit lwt.unix passage qrc re2 unix)
  (preprocess
   (pps lwt_ppx)))
