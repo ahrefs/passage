@@ -21,7 +21,7 @@ depends: [
   "qrc"
   "re2"
   "sedlex"
-  "ocamlformat" {= "0.24.1" & with-dev-setup}
+  "ocamlformat" {= "0.26.2" & with-dev-setup}
 ]
 
 depexts: [
