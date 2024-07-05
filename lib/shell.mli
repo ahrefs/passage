@@ -10,6 +10,8 @@ val kill_processes : string -> unit Lwt.t
 
 val die : ?exn:exn -> ('a, out_channel, unit, 'b) format4 -> 'a
 
+val age_generate_identity_key_root_group_exn : string -> unit Lwt.t
+
 val age_get_recipient_key_from_identity_file : string -> string Lwt.t
 
 val age_encrypt : stdin:Lwt_process.redirection -> stdout:Lwt_process.redirection -> string list -> unit Lwt.t

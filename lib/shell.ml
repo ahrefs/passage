@@ -60,6 +60,21 @@ let die ?exn fmt =
       exit 1)
     stderr fmt
 
+let age_generate_identity_key_root_group_exn id_name =
+  (* create dirs *)
+  let keys_dir = Filename.concat Config.base_dir "keys" in
+  let secrets_dir = Filename.concat Config.base_dir "secrets" in
+  FileUtil.mkdir ~parent:true Config.base_dir;
+  FileUtil.mkdir ~parent:true keys_dir;
+  FileUtil.mkdir ~parent:true secrets_dir;
+  (* create empty root group file *)
+  let root_group_file = Filename.concat keys_dir "root.group" in
+  FileUtil.touch root_group_file;
+  (* create identity file and pub key *)
+  let identity_file = Filename.concat Config.base_dir "identity.key" in
+  let%lwt () = exec "age-keygen -o %s" identity_file in
+  exec "age-keygen -y %s >> %s/%s.%s" identity_file keys_dir id_name "pub"
+
 let age_get_recipient_key_from_identity_file identity_file = pread_line_sh_cmd "age-keygen -y %s" (quote identity_file)
 
 let age_encrypt ~stdin ~stdout recipient_keys =

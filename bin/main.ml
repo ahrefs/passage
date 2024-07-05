@@ -701,6 +701,52 @@ Checking for validity of own secrets. Use -v flag to break down per secret
     Cmd.v info term
 end
 
+module Init = struct
+  let init () =
+    try%lwt
+      (* create private and pub key, ask for user's name *)
+      let%lwt () =
+        Lwt_io.printl
+          {|
+Welcome to passage initial setup.
+
+Passage will now create the default dirs for secrets and recipients keys.
+A recipient identity will also be added, as well as an empty group file for root users.
+
+The layout will be:
+~/.config/passage
+├── identity.key
+├── keys
+│   └── root.group
+│   └── <user_name>.pub
+└── secrets
+
+The location of these can be overriden using environment variables. Please check `passage --help` for details.
+
+What should be the name used for your recipient identity?|}
+      in
+      let%lwt user_name = Prompt.read_input_from_stdin () in
+      let user_name =
+        String.trim user_name
+        |> ExtString.String.replace_chars (fun c ->
+               match c with
+               | ' ' -> "_"
+               | '\n' -> ""
+               | c -> Char.escaped c)
+      in
+      let%lwt () = Shell.age_generate_identity_key_root_group_exn user_name in
+      Lwt_io.printlf "\nPassage setup completed. "
+    with exn ->
+      (* Error out and delete everything, so we can start fresh next time *)
+      FileUtil.rm ~recurse:true [ Config.base_dir ];
+      Lwt_io.printlf "E: Passage init failed. Please try again. Error:\n\n%s" (Printexc.to_string exn)
+
+  let init =
+    let doc = "initial setup of passage" in
+    let info = Cmd.info "init" ~doc in
+    let term = main_run Term.(const init $ const ()) in
+    Cmd.v info term
+end
 module List_ = struct
   let list_secrets path =
     let raw_path = show_path path in
@@ -1248,6 +1294,7 @@ let () =
       Edit_who.edit_who;
       Get.get;
       Healthcheck.healthcheck;
+      Init.init;
       List_.list;
       List_.ls;
       New.new_;
