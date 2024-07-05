@@ -22,9 +22,9 @@ Should succeed - replace a secret that does not yet exist in a folder where we a
   new secret line 3\123\65
 
 Newly created secrets should have permissions 0o644
-  $ check_permissions $PASSAGE_DIR/secrets/00/new_secret_singleline.age
+  $ stat -c "%a" $PASSAGE_DIR/secrets/00/new_secret_singleline.age
   644
-  $ check_permissions $PASSAGE_DIR/secrets/00/new_secret_multiline.age
+  $ stat -c "%a" $PASSAGE_DIR/secrets/00/new_secret_multiline.age
   644
 
 Should fail - replace a secret that does not yet exist in a folder where we are NOT listed on the .keys (invariant)

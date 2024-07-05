@@ -25,8 +25,9 @@ Should succeed - create a secret in a new folder, with info about recipients add
   
   If the secret is a staging secret, its only recipient should be @everyone.
   
+
 Newly created secrets should have permissions 0o644
-  $ check_permissions $PASSAGE_DIR/secrets/new/secret.age
+  $ stat -c "%a" $PASSAGE_DIR/secrets/new/secret.age
   644
 
 Should succeed - handle secrets with comments too

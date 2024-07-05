@@ -28,7 +28,7 @@ Should show individual operations on secrets when -v is passed
   I: refreshed 6 secrets, skipped 4, failed 0
 
 Refreshed secrets should have the same permissions as before (0o644)
-  $ check_permissions $PASSAGE_DIR/secrets/test_secret.age
+  $ stat -c "%a" $PASSAGE_DIR/secrets/test_secret.age
   644
 
 Secret content should be the same before and after refresh.

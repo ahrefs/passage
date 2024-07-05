@@ -120,17 +120,6 @@ setup_multiline_secret_with_comments() {
 EOF
 }
 
-check_permissions() {
-  if [[ "$OSTYPE" == "linux-gnu"* ]]; then
-      stat -c "%a" $1
-  elif [[ "$OSTYPE" == "darwin"* ]]; then
-      stat -f "%A" $1
-  else
-      echo "Unsupported OS"
-      exit 1
-  fi
-}
-
 # $PASSAGE_DIR/secrets/
 # ├── .keys
 # ├── 00
