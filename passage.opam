@@ -27,3 +27,14 @@ depends: [
 depexts: [
   ["age"] {os-family = "debian"}
 ]
+
+build: [
+  "dune"
+  "build"
+  "-p"
+  name
+  "-j"
+  jobs
+  "@install"
+  "@runtest" {with-test}
+]
