@@ -15,7 +15,7 @@
  %token <string> TEXT
  %token EOF
 
- %start <ast> template
+ %start <Template_ast.ast> template
 
  %%
  template:

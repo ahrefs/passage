@@ -8,7 +8,7 @@
 
 (license "MIT")
 
-(version "0.1.0")
+(version "0.1.1")
 
 (source
  (github ahrefs/passage))
@@ -24,13 +24,17 @@
  (depends
   (cmdliner
    (>= 1.1.0))
+  (ocaml
+   (>= 4.14))
+  dune
   devkit
   extunix
   fileutils
   fpath
   lwt
   lwt_ppx
-  menhir
+  (menhir
+   (>= 20231231))
   ppx_expect
   (ocamlformat
    (and
