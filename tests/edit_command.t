@@ -10,12 +10,12 @@ Set up scripts to be used in place of $EDITOR
   $ LEGACY_SINGLELINE="./legacy_singleline.sh"
   $ echo 'echo HELLO >> $1' > $APPEND_HELLO && chmod +x $APPEND_HELLO
   $ echo 'echo BYE > $1' > $OVERWRITE_WITH_BYE && chmod +x $OVERWRITE_WITH_BYE
-  $ echo 'echo "secret\n\n"; i=0; while [ $i -lt 500 ] ; do echo "line $i"; i=$((i+1)); done' >> $LONG_TEXT && chmod +x $LONG_TEXT
-  $ echo 'printf "" > $1' > $CLEAR_FILE && chmod +x $CLEAR_FILE
+  $ echo 'printf "secret\n\n"; i=0; while [ $i -lt 500 ] ; do echo "line $i"; i=$((i+1)); done' >> $LONG_TEXT && chmod +x $LONG_TEXT
+  $ echo 'echo "" > $1' > $CLEAR_FILE && chmod +x $CLEAR_FILE
   $ echo 'printf "\ncommments" > $1' > $MALFORMED_MULTILINE1 && chmod +x $MALFORMED_MULTILINE1
   $ echo 'printf "\ncomments\n\n" > $1' > $MALFORMED_MULTILINE2 && chmod +x $MALFORMED_MULTILINE2
   $ echo 'printf "secret\ncomment1\ncomment2" > $1' > $LEGACY_SINGLELINE && chmod +x $LEGACY_SINGLELINE
-  $ echo 'HELLO' | passage create 00/existing_secret
+  $ echo "HELLO" | passage create 00/existing_secret
   $ $LONG_TEXT | passage create 00/long_to_short_secret
 
 Should fail - edit a secret that does not yet exist
@@ -63,7 +63,7 @@ Should fail - editing an existing secret which user is not authorised to view (i
 After editing a secret such that the length of the encrypted text is shorter than before:
 newly encrypted text should not have leftover content from previous encrypted text
   $ passage cat 00/long_to_short_secret | wc -l
-  503
+  502
   $ check_age_file_format $PASSAGE_DIR/secrets/00/long_to_short_secret.age
   OK: age file starts with expected -----BEGIN AGE ENCRYPTED FILE-----
   OK: age file only has 1 occurrence of -----BEGIN AGE ENCRYPTED FILE-----

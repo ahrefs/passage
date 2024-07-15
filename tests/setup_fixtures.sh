@@ -41,7 +41,7 @@ check_age_file_format() {
 
 setup_identity() {
   IDENTITY=$1.key
-  age-keygen -o "$IDENTITY" 2> /dev/null
+  age-keygen > "$IDENTITY" 2> /dev/null
   touch "$PASSAGE_DIR/keys/$1.pub"
   age-keygen -y "$IDENTITY" > "$PASSAGE_DIR/keys/$1.pub"
 }
@@ -155,41 +155,40 @@ setup_secrets_dir() {
   "$PASSAGE_DIR/secrets/01" "$PASSAGE_DIR/secrets/01/00" "$PASSAGE_DIR/secrets/02" "$PASSAGE_DIR/secrets/03" "$PASSAGE_DIR/secrets/04" "$PASSAGE_DIR/secrets/05"
 
   cat<<EOF > "$PASSAGE_DIR/secrets/.keys"
-bobby.bob
-robby.rob
+$BOBBY
+$ROBBY
 
-dobby.dob
+$DOBBY
 
-tommy.tom # should be omitted
-# should be omitted
+# $TOMMY # should be omitted
 
 user.with.missing.key
 EOF
   cat<<EOF > "$PASSAGE_DIR/secrets/00/.keys"
-bobby.bob
-robby.rob
-dobby.dob
-tommy.tom
+$BOBBY
+$ROBBY
+$DOBBY
+$TOMMY
 user.with.missing.key
 EOF
   cat<<EOF > "$PASSAGE_DIR/secrets/01/.keys"
-bobby.bob
-robby.rob
-dobby.dob
-tommy.tom
+$BOBBY
+$ROBBY
+$DOBBY
+$TOMMY
 user.with.missing.key
 EOF
   cat<<EOF > "$PASSAGE_DIR/secrets/01/00/.keys"
-robby.rob
-poppy.pop
+$ROBBY
+$POPPY
 EOF
   cat<<EOF > "$PASSAGE_DIR/secrets/02/.keys"
-bobby.bob
+$BOBBY
 EOF
 
   cat<<EOF > "$PASSAGE_DIR/secrets/03/.keys"
 host/a
-poppy.pop
+$POPPY
 @root
 EOF
 

@@ -5,7 +5,6 @@ Should succeed - no path specified
   bobby.bob
   dobby.dob
   robby.rob
-  tommy.tom
   W: no keys found for user.with.missing.key
   user.with.missing.key
 
@@ -14,7 +13,6 @@ Should succeed - curr dir as path
   bobby.bob
   dobby.dob
   robby.rob
-  tommy.tom
   W: no keys found for user.with.missing.key
   user.with.missing.key
 
@@ -38,7 +36,6 @@ Should succeed - valid secret path that ends with ..
   bobby.bob
   dobby.dob
   robby.rob
-  tommy.tom
   W: no keys found for user.with.missing.key
   user.with.missing.key
 
@@ -62,7 +59,6 @@ Should succeed - path that goes out of secrets dir is mapped to top
   bobby.bob
   dobby.dob
   robby.rob
-  tommy.tom
   W: no keys found for user.with.missing.key
   user.with.missing.key
 
@@ -70,7 +66,6 @@ Should succeed - path that goes out of secrets dir is mapped to top
   bobby.bob
   dobby.dob
   robby.rob
-  tommy.tom
   W: no keys found for user.with.missing.key
   user.with.missing.key
 
@@ -78,7 +73,6 @@ Should succeed - path that goes out of secrets dir is mapped to top
   bobby.bob
   dobby.dob
   robby.rob
-  tommy.tom
   W: no keys found for user.with.missing.key
   user.with.missing.key
 
@@ -86,7 +80,6 @@ Should succeed - path that goes out of secrets dir is mapped to top
   bobby.bob
   dobby.dob
   robby.rob
-  tommy.tom
   W: no keys found for user.with.missing.key
   user.with.missing.key
 

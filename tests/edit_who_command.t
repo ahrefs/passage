@@ -6,7 +6,7 @@ Set up script to be used in place of $EDITOR
   $ APPEND_BOBBY="./APPEND_BOBBY.sh"
   $ echo 'echo bobby.bob >> $1' > $APPEND_BOBBY && chmod +x $APPEND_BOBBY
   $ KEEP_RECIPIENTS="./KEEP_RECIPIENTS.sh"
-  $ echo 'echo "bobby.bob\nrobby.rob" > $1' > $KEEP_RECIPIENTS && chmod +x $KEEP_RECIPIENTS
+  $ printf 'printf "bobby.bob\nrobby.rob" > $1' > $KEEP_RECIPIENTS && chmod +x $KEEP_RECIPIENTS
 
 Should succeed - edit recipients when the user is a recipient of the folder. Refreshes the secrets
   $ PASSAGE_IDENTITY=robby.rob.key passage get 02/secret1

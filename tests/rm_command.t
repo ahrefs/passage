@@ -12,16 +12,16 @@ Will create all this structure to avoid the noise from the recipients notice whe
   $ mkdir -p "$PASSAGE_DIR/secrets/folder"
   $ echo "bobby.bob" > "$PASSAGE_DIR/secrets/folder/.keys"
 
-  $ echo 'contents' | passage create test/new_secret
-  $ echo 'contents' | passage create test/new_secret1
-  $ echo 'contents' | passage create test/new_secret2
-  $ echo 'contents' | passage create test/new_secret3
-  $ echo 'contents' | passage create test/new_secret4
-  $ echo 'contents' | passage create test/new_secret5
-  $ echo 'contents' | passage create folder/new_secret
-  $ echo 'contents' | passage create test2/single_secret
-  $ echo 'contents' | passage create test2/test_sub/new_secret1
-  $ echo 'contents' | passage create test2/test_sub/new_secret2
+  $ echo "contents" | passage create test/new_secret
+  $ echo "contents" | passage create test/new_secret1
+  $ echo "contents" | passage create test/new_secret2
+  $ echo "contents" | passage create test/new_secret3
+  $ echo "contents" | passage create test/new_secret4
+  $ echo "contents" | passage create test/new_secret5
+  $ echo "contents" | passage create folder/new_secret
+  $ echo "contents" | passage create test2/single_secret
+  $ echo "contents" | passage create test2/test_sub/new_secret1
+  $ echo "contents" | passage create test2/test_sub/new_secret2
 
 ### For these tests we are always going to usee the -f (force) flag to avoid the prompt
 

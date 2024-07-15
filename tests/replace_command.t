@@ -1,7 +1,7 @@
   $ . ./setup_fixtures.sh
 
 Should fail - replace a non-existing secret in a new folder - redirects to passage create or new
-  $ echo 'secret' | passage replace folder/new
+  $ echo "secret" | passage replace folder/new
   E: No recipients found (use "passage {create,new} folder/new_secret_name" to use recipients associated with $PASSAGE_IDENTITY instead)
   [1]
 
@@ -89,7 +89,7 @@ Should fail - replacing an existing secret in a folder where we are NOT listed o
   [1]
 
 Should succeed - replacing a secret with comments, single and multi-line
-  $ echo "new secret\n\nnew comments\nmultiple comments" | passage create 01/new_secret_singleline_with_comments
+  $ printf "new secret\n\nnew comments\nmultiple comments" | passage create 01/new_secret_singleline_with_comments
   $ echo "replaced secret" | passage replace 01/new_secret_singleline_with_comments
   $ passage cat 01/new_secret_singleline_with_comments
   replaced secret
@@ -97,7 +97,7 @@ Should succeed - replacing a secret with comments, single and multi-line
   new comments
   multiple comments
 
-  $ echo "\nnew comments\nmultiple comments\n\nnew secret\nnew secret line 2" | passage create 01/new_secret_multiline_with_comments
+  $ printf "\nnew comments\nmultiple comments\n\nnew secret\nnew secret line 2" | passage create 01/new_secret_multiline_with_comments
   $ cat<<EOF | passage replace 01/new_secret_multiline_with_comments
   > replaced secret line 1
   > replaced secret line 2
@@ -211,8 +211,8 @@ Should encrypt for the users in the groups aliases used
   wuuut
 
 Should succeed - correctly handle inputs without newline termination
-  $ echo "secret\n\nnew comments\nmultiple comments" | passage create 01/new_secret_singleline_with_comments_2
-  $ echo -n "wuuut" | passage replace 01/new_secret_singleline_with_comments_2
+  $ printf "secret\n\nnew comments\nmultiple comments" | passage create 01/new_secret_singleline_with_comments_2
+  $ echo "wuuut\c" | passage replace 01/new_secret_singleline_with_comments_2
   $ passage cat 01/new_secret_singleline_with_comments_2
   wuuut
   
