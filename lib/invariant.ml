@@ -43,7 +43,7 @@ let die_if_invariant_fails ~op_string path =
         Lwt_list.exists_s
           (fun s ->
             try%lwt
-              let%lwt (_decrypted: string) = decrypt_exn ~silence_stderr:true s in
+              let%lwt (_decrypted : string) = decrypt_exn ~silence_stderr:true s in
               Lwt.return false
             with _e ->
               let%lwt () =
