@@ -11,8 +11,9 @@ bug-reports: "https://github.com/ahrefs/passage/issues"
 depends: [
   "cmdliner" {>= "1.1.0"}
   "ocaml" {>= "4.14"}
+  "conf-age"
   "dune" {>= "3.9"}
-  "devkit"
+  "devkit" {>= "1.20240429"}
   "extunix"
   "fileutils"
   "fpath"
@@ -41,9 +42,6 @@ build: [
   ]
 ]
 dev-repo: "git+https://github.com/ahrefs/passage.git"
-depexts: [
-  ["age"] {os-family = "debian"}
-]
 x-ci-accept-failures: [
   "alpine-3.20"
   "archlinux"

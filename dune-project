@@ -8,7 +8,7 @@
 
 (license "MIT")
 
-(version "0.1.1")
+(version "0.1.2")
 
 (source
  (github ahrefs/passage))
@@ -26,8 +26,10 @@
    (>= 1.1.0))
   (ocaml
    (>= 4.14))
+  conf-age
   dune
-  devkit
+  (devkit
+   (>= 1.20240429))
   extunix
   fileutils
   fpath
