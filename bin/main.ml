@@ -1,7 +1,8 @@
-open Devkit
 open Passage
 open Printf
 open Cmdliner
+
+module Exn = Devkit.Exn
 
 type output_mode =
   | Clipboard
@@ -151,7 +152,7 @@ If the secret is a staging secret, its only recipient should be @everyone.
       match Storage.Secrets.secret_exists secret_name with
       | false -> Lwt.return None
       | true ->
-        (try%lwt Lwt.map some @@ Storage.Secrets.decrypt_exn secret_name
+        (try%lwt Lwt.map Devkit.some @@ Storage.Secrets.decrypt_exn secret_name
          with exn -> Shell.die ~exn "E: failed to decrypt %s" raw_secret_name)
     in
     try%lwt
@@ -228,10 +229,10 @@ Are you sure you would like to continue?|}
 
   let with_secure_tmpfile suffix f =
     let program = Filename.basename Sys.executable_name in
-    let%lwt parent = !!shm_check in
+    let%lwt parent = Lazy.force shm_check in
     Lwt_io.with_temp_dir ~perm:0o700 ?parent:(Option.map show_path parent) ~prefix:(sprintf "%s." program)
       (fun secure_tmpdir ->
-        let suffix = sprintf "-%s.txt" (Stre.replace_all ~str:suffix ~sub:"/" ~by:"-") in
+        let suffix = sprintf "-%s.txt" (Devkit.Stre.replace_all ~str:suffix ~sub:"/" ~by:"-") in
         Lwt_io.with_temp_file ~temp_dir:secure_tmpdir ~suffix ~perm:0o600 f)
 
   (* make sure they really meant to exit without saving. But this is going to mess
@@ -471,7 +472,7 @@ module Get = struct
       let%lwt () = copy_to_clipboard secret in
       (* flush before forking to avoid double-flush *)
       let%lwt () = Lwt_io.flush_all () in
-      match Nix.fork () with
+      match Devkit.Nix.fork () with
       | `Child ->
         let (_ : int) = Unix.setsid () in
         let%lwt () = restore_clipboard original_content in
@@ -865,7 +866,7 @@ module Realpath = struct
              Lwt_io.printl (show_path (Path.abs (Storage.Secrets.agefile_of_name secret_name))))
            else if Path.is_directory abs_path then (
              let str = show_path abs_path in
-             if Path.is_dot (Path.build_rel_path (show_path path)) then Lwt_io.printl (!!Storage.Secrets.base_dir ^ "/")
+             if Path.is_dot (Path.build_rel_path (show_path path)) then Lwt_io.printl (Lazy.force Storage.Secrets.base_dir ^ "/")
              else Lwt_io.printl (str ^ if String.ends_with ~suffix:"/" str then "" else "/"))
            else Lwt_io.eprintf "W: real path of secret/folder %S not found\n" (show_path path))
 
@@ -1181,7 +1182,7 @@ module Who = struct
       List.iter
         (fun (r : Age.recipient) ->
           (match r.keys with
-          | [] -> eprintfn "W: no keys found for %s" r.name
+          | [] -> Devkit.eprintfn "W: no keys found for %s" r.name
           | _ -> ());
           print_endline r.name)
         recipients
@@ -1217,11 +1218,11 @@ module Who = struct
               in
               [ Age.Key.inject "" ]
             with exn ->
-              printfn "E: couldn't retrieve recipients for group %s. Reason: %s" recipient_name (Printexc.to_string exn);
+              Devkit.printfn "E: couldn't retrieve recipients for group %s. Reason: %s" recipient_name (Printexc.to_string exn);
               []
           in
           (match recipient_keys with
-          | [] -> eprintfn "W: no keys found for %s" recipient_name
+          | [] -> Devkit.eprintfn "W: no keys found for %s" recipient_name
           | _ -> ());
           print_endline recipient_name)
         recipients_names

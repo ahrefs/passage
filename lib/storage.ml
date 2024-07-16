@@ -1,5 +1,9 @@
-open Devkit
 open Printf
+
+module Action = Devkit.Action
+module Stre = Devkit.Stre
+
+let (!!) = Lazy.force
 
 module Secret_name = struct
   include Devkit.Fresh (String) ()
@@ -63,7 +67,7 @@ module Secrets = struct
       (* We have this check here to avoid uncaught exns in other spots later *)
       let (_ : Path.t) = agefile_of_name name in
       name |> Secret_name.norm_secret
-    with FilePath.NoExtension filename -> Exn.fail "%s is not a valid secret" filename
+    with FilePath.NoExtension filename -> Devkit.Exn.fail "%s is not a valid secret" filename
 
   let get_secrets_tree path =
     let full_path = Path.(project @@ abs path) in
@@ -271,7 +275,7 @@ module Secrets = struct
             let%lwt () = verbose_print "I: skipped %s" raw_secret_name in
             Lwt.return (skipped + 1, refreshed, failed)
           | Failed exn ->
-            let%lwt () = verbose_print "W: failed to refresh %s : %s" raw_secret_name (Exn.to_string exn) in
+            let%lwt () = verbose_print "W: failed to refresh %s : %s" raw_secret_name (Devkit.Exn.to_string exn) in
             Lwt.return (skipped, refreshed, failed + 1))
         (0, 0, 0) secrets
     in

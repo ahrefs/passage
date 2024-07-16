@@ -1,4 +1,3 @@
-open Devkit
 open Printf
 
 let age = "age"
@@ -6,10 +5,10 @@ let age = "age"
 let quote = Filename.quote
 
 let check_process_status raw_cmd status =
-  let fail reason signum = Exn_lwt.fail "%s by signal %d: %s" reason signum raw_cmd in
+  let fail reason signum = Devkit.Exn_lwt.fail "%s by signal %d: %s" reason signum raw_cmd in
   match status with
   | Unix.WEXITED 0 -> Lwt.return_unit
-  | WEXITED code -> Exn_lwt.fail "%s : exit code %d" raw_cmd code
+  | WEXITED code -> Devkit.Exn_lwt.fail "%s : exit code %d" raw_cmd code
   | WSIGNALED signum -> fail "killed" signum
   | WSTOPPED signum -> fail "stopped" signum
 
@@ -56,7 +55,7 @@ let die ?exn fmt =
     (fun out ->
       (match exn with
       | None -> fprintf out "\n"
-      | Some exn -> fprintf out " : %s\n" (Exn.to_string exn));
+      | Some exn -> fprintf out " : %s\n" (Devkit.Exn.to_string exn));
       exit 1)
     stderr fmt
 

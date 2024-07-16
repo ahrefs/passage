@@ -1,5 +1,3 @@
-open Devkit
-
 let parse s =
   let lexbuf = Template_lexer.Encoding.from_string s in
   let lexer = Sedlexing.with_tokenizer Template_lexer.token lexbuf in
@@ -29,7 +27,7 @@ let build_text_from_ast ast =
     (fun node ->
       match node with
       | Template_ast.Text s -> s
-      | Template_ast.Iden secret_name -> Exn.fail "found unsubstituted secret %s" secret_name)
+      | Template_ast.Iden secret_name -> Devkit.Exn.fail "found unsubstituted secret %s" secret_name)
     ast
   |> String.concat ""
 
@@ -41,7 +39,7 @@ let substitute ~template ?(file_out = None) () =
     print_string contents;
     Lwt.return_unit
   | Some target_file ->
-    Files.save_as (Path.project target_file) ~mode:0o600 (fun oc -> Out_channel.output_string oc contents);
+    Devkit.Files.save_as (Path.project target_file) ~mode:0o600 (fun oc -> Out_channel.output_string oc contents);
     Lwt.return_unit
 
 let substitute_file ~template_file ~target_file =

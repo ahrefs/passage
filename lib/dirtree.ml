@@ -1,4 +1,3 @@
-open Devkit
 open Printf
 open Storage.Secrets
 
@@ -9,7 +8,7 @@ and node = string * t
 
 type top = Top of node
 
-let self_key = lazy (Age.Key.from_identity_file !!Config.identity_file)
+let self_key = lazy (Age.Key.from_identity_file @@ Lazy.force Config.identity_file)
 
 (* always recurse on directories and keep files with extension [ext] *)
 let ext_filt ext base nm sub =
@@ -23,7 +22,7 @@ let ext_filt ext base nm sub =
       let name = name_of_file (Path.of_fpath full) in
       let%lwt res =
         try%lwt
-          let%lwt self_key = !!self_key in
+          let%lwt self_key = Lazy.force self_key in
           match is_recipient_of_secret self_key name with
           | false -> Lwt.return Skipped
           | true ->
