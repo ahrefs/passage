@@ -3,7 +3,7 @@ open Printf
 module Action = Devkit.Action
 module Stre = Devkit.Stre
 
-let (!!) = Lazy.force
+let ( !! ) = Lazy.force
 
 module Secret_name = struct
   include Devkit.Fresh (String) ()

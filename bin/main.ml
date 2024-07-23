@@ -866,7 +866,8 @@ module Realpath = struct
              Lwt_io.printl (show_path (Path.abs (Storage.Secrets.agefile_of_name secret_name))))
            else if Path.is_directory abs_path then (
              let str = show_path abs_path in
-             if Path.is_dot (Path.build_rel_path (show_path path)) then Lwt_io.printl (Lazy.force Storage.Secrets.base_dir ^ "/")
+             if Path.is_dot (Path.build_rel_path (show_path path)) then
+               Lwt_io.printl (Lazy.force Storage.Secrets.base_dir ^ "/")
              else Lwt_io.printl (str ^ if String.ends_with ~suffix:"/" str then "" else "/"))
            else Lwt_io.eprintf "W: real path of secret/folder %S not found\n" (show_path path))
 
@@ -1218,7 +1219,8 @@ module Who = struct
               in
               [ Age.Key.inject "" ]
             with exn ->
-              Devkit.printfn "E: couldn't retrieve recipients for group %s. Reason: %s" recipient_name (Printexc.to_string exn);
+              Devkit.printfn "E: couldn't retrieve recipients for group %s. Reason: %s" recipient_name
+                (Printexc.to_string exn);
               []
           in
           (match recipient_keys with
