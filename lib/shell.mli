@@ -2,11 +2,9 @@ val editor : string -> unit Lwt.t
 
 val xclip_read_clipboard : string -> string Lwt.t
 
-val xclip_copy_to_clipboard : string -> x_selection:string -> unit Lwt.t
+val xclip_copy_to_clipboard : string -> x_selection:string -> unit
 
-val clear_clipboard_managers : unit -> unit Lwt.t
-
-val kill_processes : string -> unit Lwt.t
+val clear_clipboard_managers : unit -> unit
 
 val die : ?exn:exn -> ('a, out_channel, unit, 'b) format4 -> 'a
 

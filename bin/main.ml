@@ -442,7 +442,7 @@ module Get = struct
     let save_to_clipboard_exn ~secret =
       let read_clipboard () = Shell.xclip_read_clipboard Config.x_selection in
       let copy_to_clipboard s =
-        try%lwt Shell.xclip_copy_to_clipboard s ~x_selection:Config.x_selection
+        try Shell.xclip_copy_to_clipboard s ~x_selection:Config.x_selection
         with exn -> Exn.fail ~exn "E: could not copy data to the clipboard"
       in
       let restore_clipboard original_content =
@@ -455,21 +455,21 @@ module Get = struct
 
            Clipboard managers frequently write their history out in plaintext,
            so we axe it here: *)
-        let%lwt () =
-          try%lwt Shell.clear_clipboard_managers ()
-          with _ ->
+        let () =
+          try
+            Shell.clear_clipboard_managers ()
             (* any exns raised are likely due to qdbus, klipper, etc., being absent.
                Thus, we swallow these exns so that it becomes a no-op *)
-            Lwt.return_unit
+          with _ -> ()
         in
         match current_content = secret with
         | false ->
           (* clipboard was used and overwritten, so we don't attempt to perform any restoration *)
           Lwt.return_unit
-        | true -> copy_to_clipboard original_content
+        | true -> Lwt.return @@ copy_to_clipboard original_content
       in
       let%lwt original_content = read_clipboard () in
-      let%lwt () = copy_to_clipboard secret in
+      let () = copy_to_clipboard secret in
       (* flush before forking to avoid double-flush *)
       let%lwt () = Lwt_io.flush_all () in
       match Devkit.Nix.fork () with

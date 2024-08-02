@@ -4,6 +4,29 @@ let age = "age"
 
 let quote = Filename.quote
 
+let shell cmd = if Sys.win32 then [| "cmd.exe"; "/c"; "\000" ^ cmd |] else [| "/bin/sh"; "-c"; cmd |]
+
+let check_process_status_sync raw_cmd status =
+  let fail reason signum = Devkit.Exn.fail "%s by signal %d: %s" reason signum raw_cmd in
+  match status with
+  | Unix.WEXITED 0 -> ()
+  | WEXITED code -> Devkit.Exn.fail "%s : exit code %d" raw_cmd code
+  | WSIGNALED signum -> fail "killed" signum
+  | WSTOPPED signum -> fail "stopped" signum
+
+let exec_sync ?stdin ?stdout ?stderr raw_cmd_fmt =
+  Printf.ksprintf
+    (fun raw_cmd ->
+      let in_fd = Option.value ~default:Unix.stdin stdin in
+      let out_fd = Option.value ~default:Unix.stdout stdout in
+      let err_fd = Option.value ~default:Unix.stderr stderr in
+      let prog = shell raw_cmd in
+      let pid = Unix.create_process "sh" prog in_fd out_fd err_fd in
+      List.iter (fun fd -> Option.iter (fun fd -> Unix.close fd) fd) [ stdin; stdout; stderr ];
+      let _, status = Unix.waitpid [] pid in
+      check_process_status_sync raw_cmd status)
+    raw_cmd_fmt
+
 let check_process_status raw_cmd status =
   let fail reason signum = Devkit.Exn_lwt.fail "%s by signal %d: %s" reason signum raw_cmd in
   match status with
@@ -19,6 +42,51 @@ let exec ?stdin ?stdout ?stderr raw_cmd_fmt =
       let%lwt status = Lwt_process.exec ?stdin ?stdout ?stderr cmd in
       check_process_status raw_cmd status)
     raw_cmd_fmt
+
+let read_sh_cmd_wrapper_sync raw_cmd_fmt read =
+  Printf.ksprintf
+    (fun raw_cmd ->
+      let in_read, in_write = Unix.pipe () in
+      let prog = shell raw_cmd in
+      let pid = Unix.(create_process "sh" prog stdin in_write stderr) in
+      Unix.close in_write;
+      let ic = Unix.in_channel_of_descr in_read in
+      let result = read ic in
+      close_in ic;
+      let _, status = Unix.waitpid [] pid in
+      check_process_status_sync raw_cmd status;
+      result)
+    raw_cmd_fmt
+
+let pread_sh_cmd_sync raw_cmd_fmt = read_sh_cmd_wrapper_sync raw_cmd_fmt In_channel.input_all
+
+(* let pread_sh_cmd_sync raw_cmd_fmt =
+   read_sh_cmd_wrapper_sync raw_cmd_fmt (fun in_read ->
+       let buf = Buffer.create 1024 in
+       let rec read_all () =
+         let bytes = Bytes.create 1024 in
+         let n = Unix.read in_read bytes 0 1024 in
+         if n > 0 then (
+           Buffer.add_subbytes buf bytes 0 n;
+           read_all ())
+       in
+       read_all ();
+       Buffer.contents buf) *)
+
+let pread_line_sh_cmd_sync raw_cmd_fmt = read_sh_cmd_wrapper_sync raw_cmd_fmt input_line
+
+(* let pread_line_sh_cmd_sync raw_cmd_fmt =
+   read_sh_cmd_wrapper_sync raw_cmd_fmt (fun in_read ->
+       let buf = Buffer.create 1024 in
+       let rec read_line () =
+         let bytes = Bytes.create 1 in
+         let n = Unix.read in_read bytes 0 1 in
+         if n > 0 && Bytes.get bytes 0 <> '\n' then (
+           Buffer.add_subbytes buf bytes 0 n;
+           read_line ())
+       in
+       read_line ();
+       Buffer.contents buf) *)
 
 (* Reimplementation of Lwt_process.pread and Lwt_process.pread_line that throws exn when command fails to
    execute properly (https://github.com/ocsigen/lwt/issues/216)
@@ -37,18 +105,15 @@ let pread_line_sh_cmd raw_cmd_fmt = read_sh_cmd_wrapper raw_cmd_fmt Lwt_io.read_
 
 let editor filename =
   let editor = Option.value (Sys.getenv_opt "EDITOR") ~default:"editor" in
-  exec "%s %s" (quote editor) (quote filename)
+  exec_sync "%s %s" (quote editor) (quote filename)
 
 let xclip_read_clipboard x_selection = pread_sh_cmd "xclip -o -selection %s 2>/dev/null" (quote x_selection)
 
 let xclip_copy_to_clipboard s ~x_selection =
-  exec {|printf "%%s" %s | xclip -selection %s|} (quote s) (quote x_selection)
+  exec_sync {|printf "%%s" %s | xclip -selection %s|} (quote s) (quote x_selection)
 
 let clear_clipboard_managers () =
-  exec "qdbus org.kde.klipper /klipper org.kde.klipper.klipper.clearClipboardHistory &>/dev/null"
-
-(* return success even if no processes were killed *)
-let kill_processes proc_name = exec "pkill -f %s 2>/dev/null || true" (quote @@ "^" ^ proc_name)
+  exec_sync "qdbus org.kde.klipper /klipper org.kde.klipper.klipper.clearClipboardHistory &>/dev/null"
 
 let die ?exn fmt =
   kfprintf
