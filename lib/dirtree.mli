@@ -3,5 +3,5 @@ type t =
   | F of unit Storage.Secrets.outcome
 and node = string * t
 type top = Top of node
-val of_path : Fpath.t -> top Lwt.t
-val pp : top -> unit Lwt.t
+val of_path : Fpath.t -> top
+val pp : top -> unit

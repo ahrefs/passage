@@ -1069,8 +1069,8 @@ module Show = struct
     | false, true -> Get.cat (secret_name_of_path path) Stdout None
     | false, false -> Shell.die "No secrets at this path : %s" (show_path full_path)
     | true, _ ->
-      let%lwt tree = Dirtree.of_path (Path.to_fpath full_path) in
-      Dirtree.pp tree
+      let tree = Dirtree.of_path (Path.to_fpath full_path) in
+      Lwt.return @@ Dirtree.pp tree
 
   let show =
     let doc =
