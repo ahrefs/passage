@@ -220,7 +220,7 @@ module Secrets = struct
       Filename.open_temp_file ~mode:[ Open_creat; Open_wronly; Open_trunc ] ~perms:0o644 ~temp_dir "" tmpfile_suffix
     in
     let tmpfile_fd = Unix.descr_of_out_channel tmpfile_oc in
-    let%lwt () = encrypt_to_stdout ~stdout:(`FD_move tmpfile_fd) in
+    let () = encrypt_to_stdout ~stdout:tmpfile_fd in
     FileUtil.mv tmpfile (Path.project secret_file);
     Lwt.return_unit
 
@@ -231,7 +231,7 @@ module Secrets = struct
   let decrypt_exn ?(silence_stderr = false) secret_name =
     let secret_file = Path.(project @@ abs @@ agefile_of_name secret_name) in
     let fd = Unix.openfile secret_file [ O_RDONLY ] 0o400 in
-    Age.decrypt_from_stdin ~identity_file:!!Config.identity_file ~stdin:(`FD_move fd) ~silence_stderr
+    Age.decrypt_from_stdin ~identity_file:!!Config.identity_file ~stdin:fd ~silence_stderr
 
   let refresh' ?(force = false) secret_name self_key =
     match force || is_recipient_of_secret self_key secret_name with
@@ -239,16 +239,16 @@ module Secrets = struct
     | true ->
       (try%lwt
          let fd_r, fd_w = Unix.pipe () in
-         let%lwt () =
+         let () =
            let secret_file = Path.abs @@ agefile_of_name secret_name in
            let secret_fd = Unix.openfile (Path.project secret_file) [ O_RDONLY ] 0o400 in
-           Age.decrypt_from_stdin_to_stdout ~identity_file:!!Config.identity_file ~stdin:(`FD_move secret_fd)
-             ~silence_stderr:false ~stdout:(`FD_move fd_w)
+           Age.decrypt_from_stdin_to_stdout ~identity_file:!!Config.identity_file ~stdin:secret_fd ~silence_stderr:false
+             ~stdout:fd_w
          in
          let%lwt () =
            let recipients = get_recipients_from_path_exn (to_path secret_name) in
            encrypt_using_tmpfile ~secret_name
-             ~encrypt_to_stdout:(Age.encrypt_from_stdin_to_stdout ~recipients ~stdin:(`FD_move fd_r))
+             ~encrypt_to_stdout:(Age.encrypt_from_stdin_to_stdout ~recipients ~stdin:fd_r)
          in
          Lwt.return (Succeeded ())
        with exn -> Lwt.return @@ Failed exn)
@@ -262,7 +262,7 @@ module Secrets = struct
           | false -> Lwt.return_unit)
         fmt
     in
-    let%lwt self_key = Age.Key.from_identity_file !!Config.identity_file in
+    let self_key = Age.Key.from_identity_file !!Config.identity_file in
     let%lwt skipped, refreshed, failed =
       Lwt_list.fold_left_s
         (fun (skipped, refreshed, failed) secret ->
@@ -301,7 +301,7 @@ module Secrets = struct
     with exn -> Lwt.return (Failed exn)
 
   let search secret_name pattern =
-    let%lwt self_key = Age.Key.from_identity_file !!Config.identity_file in
+    let self_key = Age.Key.from_identity_file !!Config.identity_file in
     match is_recipient_of_secret self_key secret_name with
     | false -> Lwt.return Skipped
     | true ->
@@ -313,7 +313,7 @@ module Secrets = struct
 
   (** Returns a list with the keys that are recipients for the default identity file *)
   let recipients_of_own_id () =
-    let%lwt own_key = Age.Key.from_identity_file !!Config.identity_file in
+    let own_key = Age.Key.from_identity_file !!Config.identity_file in
     Lwt.return
       (Keys.all_recipient_names ()
       |> List.filter_map (fun name ->

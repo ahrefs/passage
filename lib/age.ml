@@ -1,9 +1,7 @@
 module Key = struct
   include Devkit.Fresh (String) ()
 
-  let from_identity_file f =
-    let%lwt key = Shell.age_get_recipient_key_from_identity_file f in
-    Lwt.return @@ inject key
+  let from_identity_file f = inject @@ Shell.age_get_recipient_key_from_identity_file f
 end
 
 type recipient = {
@@ -28,19 +26,19 @@ let encrypt_to_stdout ~recipients ~plaintext ~stdout =
   let bytes = Bytes.of_string plaintext in
   let (_ : int) = Unix.write fd_w bytes 0 (Bytes.length bytes) in
   Unix.close fd_w;
-  encrypt_from_stdin_to_stdout ~recipients ~stdin:(`FD_move fd_r) ~stdout
+  encrypt_from_stdin_to_stdout ~recipients ~stdin:fd_r ~stdout
 
 let decrypt_from_stdin_to_stdout ~silence_stderr ~identity_file ~stdin ~stdout =
   let stderr =
     match silence_stderr with
-    | true -> Some `Dev_null
+    | true -> Some (Unix.openfile "/dev/null" [ O_WRONLY ] 0)
     | false -> None
   in
   Shell.age_decrypt ~stdin ~stdout ?stderr identity_file
 
 let decrypt_from_stdin ~silence_stderr ~identity_file ~stdin =
   let fd_r, fd_w = Unix.pipe () in
-  let%lwt () = decrypt_from_stdin_to_stdout ~silence_stderr ~identity_file ~stdin ~stdout:(`FD_move fd_w) in
+  let () = decrypt_from_stdin_to_stdout ~silence_stderr ~identity_file ~stdin ~stdout:fd_w in
   let%lwt plaintext = Lwt_io.(read (of_unix_fd ~mode:Input fd_r)) in
   Unix.close fd_r;
   Lwt.return plaintext

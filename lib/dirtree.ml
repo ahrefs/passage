@@ -22,7 +22,7 @@ let ext_filt ext base nm sub =
       let name = name_of_file (Path.of_fpath full) in
       let%lwt res =
         try%lwt
-          let%lwt self_key = Lazy.force self_key in
+          let self_key = Lazy.force self_key in
           match is_recipient_of_secret self_key name with
           | false -> Lwt.return Skipped
           | true ->

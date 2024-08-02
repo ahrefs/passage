@@ -238,7 +238,12 @@ Are you sure you would like to continue?|}
   (* make sure they really meant to exit without saving. But this is going to mess
    * up if an editor never cleanly exits. *)
   let rec edit_loop tmpfile =
-    let%lwt had_exception = try%lwt Lwt.map (fun () -> false) (Shell.editor tmpfile) with _ -> Lwt.return true in
+    let had_exception =
+      try
+        Shell.editor tmpfile;
+        false
+      with _ -> true
+    in
     if had_exception then (
       match%lwt Prompt.yesno "Editor was exited without saving successfully, try again?" with
       | true -> edit_loop tmpfile
@@ -295,7 +300,7 @@ Are you sure you would like to continue?|}
             Lwt_io.close tmpfile_oc)
           else Lwt.return_unit
         in
-        let%lwt () = Shell.editor tmpfile in
+        let () = Shell.editor tmpfile in
         Lwt_io.(with_file ~mode:Input tmpfile read))
 end
 
@@ -447,7 +452,7 @@ module Get = struct
       in
       let restore_clipboard original_content =
         let%lwt () = Lwt_unix.sleep (float_of_int Config.clip_time) in
-        let%lwt current_content = read_clipboard () in
+        let current_content = read_clipboard () in
         (* It might be nice to programatically check to see if klipper exists,
            as well as checking for other common clipboard managers. But for now,
            this works fine -- if qdbus isn't there or if klipper isn't running,
@@ -468,7 +473,7 @@ module Get = struct
           Lwt.return_unit
         | true -> Lwt.return @@ copy_to_clipboard original_content
       in
-      let%lwt original_content = read_clipboard () in
+      let original_content = read_clipboard () in
       let () = copy_to_clipboard secret in
       (* flush before forking to avoid double-flush *)
       let%lwt () = Lwt_io.flush_all () in
@@ -735,7 +740,7 @@ What should be the name used for your recipient identity?|}
                | '\n' -> ""
                | c -> Char.escaped c)
       in
-      let%lwt () = Shell.age_generate_identity_key_root_group_exn user_name in
+      let () = Shell.age_generate_identity_key_root_group_exn user_name in
       Lwt_io.printlf "\nPassage setup completed. "
     with exn ->
       (* Error out and delete everything, so we can start fresh next time *)
