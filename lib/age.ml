@@ -39,6 +39,6 @@ let decrypt_from_stdin_to_stdout ~silence_stderr ~identity_file ~stdin ~stdout =
 let decrypt_from_stdin ~silence_stderr ~identity_file ~stdin =
   let fd_r, fd_w = Unix.pipe () in
   let () = decrypt_from_stdin_to_stdout ~silence_stderr ~identity_file ~stdin ~stdout:fd_w in
-  let%lwt plaintext = Lwt_io.(read (of_unix_fd ~mode:Input fd_r)) in
+  let plaintext = In_channel.input_all (Unix.in_channel_of_descr fd_r) in
   Unix.close fd_r;
-  Lwt.return plaintext
+  plaintext
