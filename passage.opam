@@ -42,6 +42,7 @@ build: [
   ]
 ]
 dev-repo: "git+https://github.com/ahrefs/passage.git"
+install: [make "install_bash_completions"]
 x-ci-accept-failures: [
   "alpine-3.20"
   "archlinux"

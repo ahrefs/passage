@@ -1,4 +1,5 @@
 .DEFAULT_GOAL := build
+SHELL := /bin/bash
 
 .PHONY: build
 build:
@@ -27,3 +28,7 @@ clean:
 .PHONY: top
 top:
 	dune utop .
+
+.PHONY: install_bash_completions
+install_bash_completions:
+	. ./install-bash-completions.sh
