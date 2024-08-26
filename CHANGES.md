@@ -1,5 +1,8 @@
+## 0.1.4 (2024-08-26)
+- Add bash completions on install
+
 ## 0.1.3 (2024-07-24)
-- add the public_name stanza to the passage lib
+- Add the public_name stanza to the passage lib
 
 ## 0.1.2 (2024-07-15)
 - Update test config and add opam ci exclusions
