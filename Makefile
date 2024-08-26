@@ -1,5 +1,4 @@
 .DEFAULT_GOAL := build
-SHELL := /bin/bash
 
 .PHONY: build
 build:
@@ -31,4 +30,4 @@ top:
 
 .PHONY: install_bash_completions
 install_bash_completions:
-	. ./install-bash-completions.sh
+	./install-bash-completions.sh
