@@ -27,7 +27,3 @@ clean:
 .PHONY: top
 top:
 	dune utop .
-
-.PHONY: install_bash_completions
-install_bash_completions:
-	./install-bash-completions.sh

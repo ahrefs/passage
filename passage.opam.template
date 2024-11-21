@@ -1,4 +1,3 @@
-install: [make "install_bash_completions"]
 x-ci-accept-failures: [
   "alpine-3.20"
   "archlinux"

@@ -1,3 +1,6 @@
+## Unreleased
+- Remove bash completions opam install. Moved to debian package.
+
 ## 0.1.4 (2024-08-26)
 - Add bash completions on install
 
