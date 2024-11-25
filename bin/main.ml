@@ -61,17 +61,33 @@ module Prompt = struct
     | true -> Lwt_io.printl "I: reading from stdin. Please type the secret and then do Ctrl+d twice to terminate input"
     | false -> Lwt.return_unit
 
-  let read_input_from_stdin () = Lwt_io.(read stdin)
+  let read_input_from_stdin ?initial:_ () = Lwt_io.(read stdin)
 
-  let rec input_and_validate_loop ?(transform = fun x -> x) get_secret_input =
-    let%lwt input = get_secret_input () in
-    let secret = transform input in
+  let rec input_and_validate_loop ?(transform = fun x -> x) ?initial get_secret_input =
+    let remove_trailing_newlines s =
+      let rec loop s =
+        match String.ends_with ~suffix:"\n" s with
+        | true -> loop (String.sub s 0 (String.length s - 1))
+        | false -> s
+      in
+      loop s
+    in
+    let%lwt input = get_secret_input ?initial () in
+    let input = transform input in
+    (* Remove bash commented lines from the secret and any trailing newlines *)
+    let secret =
+      String.split_on_char '\n' input
+      |> List.filter (fun line -> not (String.starts_with ~prefix:"#" line))
+      |> String.concat "\n"
+      |> remove_trailing_newlines
+    in
     match Secret.Validation.validate secret with
     | Error (e, _typ) ->
       if is_TTY = false then Shell.die "This secret is in an invalid format: %s" e
       else (
         let%lwt () = Lwt_io.printlf "\nThis secret is in an invalid format: %s" e in
-        if%lwt yesno "Edit again?" then input_and_validate_loop get_secret_input else Lwt.return_error e)
+        if%lwt yesno "Edit again?" then input_and_validate_loop ?initial:(Some input) get_secret_input
+        else Lwt.return_error e)
     | _ -> Lwt.return_ok secret
 
   (** Gets and validates user input reading from stdin. If the input has the wrong format, the user
@@ -402,7 +418,10 @@ module Edit_cmd = struct
       Invariant.run_if_recipient ~op_string:"edit secret" ~path:(path_of_secret_name secret_name) ~f:(fun () ->
           Edit.edit_secret secret_name ~allow_retry:true ~get_updated_secret:(fun initial ->
               let%lwt secret =
-                Prompt.input_and_validate_loop (Edit.new_text_from_editor ?initial ~name:(show_name secret_name))
+                Prompt.input_and_validate_loop
+                (* when we are editing a secret, we know `initial` is Some and we add the format explainer to it *)
+                  ?initial:(Option.map (fun i -> i ^ Secret.format_explainer) initial)
+                  (Edit.new_text_from_editor ~name:(show_name secret_name))
               in
               Lwt.return (Result.value ~default:"" secret)))
 
@@ -774,78 +793,20 @@ module List_ = struct
 end
 
 module New = struct
-  let singleline prompt =
-    let%lwt () = Lwt_io.printf "%s: \n" prompt in
-    let%lwt line = Lwt_io.(read_line stdin) in
-    Lwt.return line
-
-  let multiline prompt =
-    let%lwt () = Lwt_io.printf "%s (hit enter twice to end):\n" prompt in
-    let rec loop lines =
-      let%lwt line = Lwt_io.(read_line stdin) in
-      if line = "" then Lwt.return @@ String.concat "\n" (List.rev @@ lines) else loop (line :: lines)
-    in
-    loop []
-
-  let notice note =
-    let%lwt () = Lwt_io.printl note in
-    let%lwt (_ : string) = Lwt_io.(read_line stdin) in
-    Lwt.return_unit
-
   let create_new_secret secret_name =
-    let%lwt description =
-      multiline
-        {|
-Every secret should include where it comes from (how to rotate) and where it goes (how it is used).
-
-Enter a complete description|}
+    let%lwt () =
+      Edit.edit_secret ~self_fallback:true secret_name ~allow_retry:true ~get_updated_secret:(fun initial ->
+          let%lwt secret =
+            Prompt.input_and_validate_loop
+              ~initial:(Option.value ~default:Secret.format_explainer initial)
+              (Edit.new_text_from_editor ~name:(show_name secret_name))
+          in
+          Lwt.return (Result.value ~default:"" secret))
     in
-    let%lwt secret =
-      singleline "Single-line secret (you'll be given a chance to edit the result or add more recipients next)"
-    in
-    let%lwt secret_and_description =
-      match secret <> "", description = "" with
-      | false, _ -> Shell.die "E: no secret provided. Quitting"
-      | true, false ->
-        (* single-line secrets with comments, use the correct format *)
-        Lwt.return @@ Secret.singleline_from_text_description secret description
-      | true, true ->
-        let%lwt () =
-          notice "No description provided, creating single-line secret without description. Hit enter to continue."
-        in
-        Lwt.return secret
-    in
-    let%lwt secret_and_description =
-      let rec loop ?(is_invalid = false) tmp_file =
-        let%lwt new_text =
-          let%lwt review_secret = Prompt.yesno "review/edit the resulting file?" in
-          match is_invalid, review_secret with
-          | true, false -> Shell.die "E: can't create the secret. Invalid format"
-          | false, false -> Lwt.return tmp_file
-          | _, true ->
-            (try%lwt Edit.new_text_from_editor ~initial:tmp_file () with exn -> Shell.die ~exn "Failed editing text")
-        in
-        match Secret.Validation.validate new_text with
-        | Error (e, _t) ->
-          let%lwt () = Lwt_io.printf "This secret is in an invalid format: %s\n" e in
-          loop ~is_invalid:true new_text
-        | Ok _ -> Lwt.return new_text
-      in
-      loop secret_and_description
-    in
-    try%lwt
-      let secret_path = path_of_secret_name secret_name in
-      let original_recipients = Storage.Secrets.get_recipients_from_path_exn secret_path in
-      let%lwt () =
-        Edit.show_recipients_notice_if_true (original_recipients = []);
-        if%lwt Prompt.yesno "Edit recipients for this secret?" then Edit.edit_recipients secret_name
-      in
-      (* if the new secret has no recipients, add ourselves to it *)
-      let%lwt own_recipients = Storage.Secrets.recipients_of_own_id () in
-      let%lwt () = Edit.add_recipients_if_none_exists own_recipients secret_path in
-      let recipients = Storage.Secrets.get_recipients_from_path_exn secret_path in
-      Encrypt.encrypt_exn ~plaintext:secret_and_description ~secret_name recipients
-    with exn -> Shell.die ~exn "E: encrypting %s failed" (show_name secret_name)
+    let secret_path = path_of_secret_name secret_name in
+    let original_recipients = Storage.Secrets.get_recipients_from_path_exn secret_path in
+    Edit.show_recipients_notice_if_true (original_recipients = []);
+    if%lwt Prompt.yesno "Edit recipients for this secret?" then Edit.edit_recipients secret_name
 
   let create_new_secret' secret_name = Create.invariant_create ~create_new_secret secret_name
 
