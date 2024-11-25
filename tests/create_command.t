@@ -43,7 +43,7 @@ Should fail - create secret with wrong format
   This secret is in an invalid format: empty secrets are not allowed
   [1]
   $ printf "secret\ncomment" | passage create new/legacy-single-line
-  This secret is in an invalid format: legacy single line secret format. Please use the correct format
+  This secret is in an invalid format: single-line secrets with comments should have an empty line between the secret and the comments.
   [1]
   $ printf "\nsecret\ncomment" | passage create new/multi-line-no-secret
   This secret is in an invalid format: multiline: empty secret
