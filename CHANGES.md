@@ -1,4 +1,6 @@
-## Unreleased
+## 0.1.5 (2024-11-26)
+- Add replace-comment command
+- Make new and edit commands usage uniform
 - Remove bash completions opam install. Moved to debian package.
 
 ## 0.1.4 (2024-08-26)
