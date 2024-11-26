@@ -14,11 +14,14 @@ let kind_to_string k =
   | Multiline -> "multi-line"
 
 let singleline_from_text_description text description =
+  let text = String.trim text in
   match description with
   | "" -> text
   | _ -> Printf.sprintf "%s\n\n%s" text description
 
 let multiline_from_text_description text description =
+  let text = String.trim text in
+  let description = String.trim description in
   match description with
   | "" -> Printf.sprintf "\n\n%s" text
   | _ -> Printf.sprintf "\n%s\n\n%s" description text
@@ -83,7 +86,16 @@ module Validation = struct
       (* multi-line without comments *)
       | "" :: "" :: secret :: _ when String.trim secret <> "" -> Ok Multiline
       (* single-line with comments *)
-      | secret :: "" :: _ when String.trim secret <> "" -> Ok Singleline
+      | secret :: "" :: comments when String.trim secret <> "" ->
+        let has_empty_lines_in_cmts =
+          match comments with
+          | [] -> false
+          | cmts ->
+            String.concat "\n" cmts |> String.trim |> String.split_on_char '\n' |> List.map String.trim |> List.mem ""
+        in
+        (match has_empty_lines_in_cmts with
+        | true -> Error ("empty lines are not allowed in comments", InvalidFormat)
+        | false -> Ok Singleline)
       (* We don't want to allow the creation of new secrets in legacy single-line format *)
       | secret :: comment :: _ when String.trim secret <> "" && String.trim comment <> "" ->
         Error

@@ -56,14 +56,27 @@ module Prompt = struct
       | "Y" | "y" -> Lwt.return (TTY true)
       | _ -> Lwt.return (TTY false))
 
-  let input_help_if_user_input () =
+  let input_help_if_user_input ?(msg = "Please type the secret and then do Ctrl+d twice to terminate input") () =
     match is_TTY with
-    | true -> Lwt_io.printl "I: reading from stdin. Please type the secret and then do Ctrl+d twice to terminate input"
+    | true -> Lwt_io.printl @@ sprintf "I: reading from stdin. %s" msg
     | false -> Lwt.return_unit
 
   let read_input_from_stdin ?initial:_ () = Lwt_io.(read stdin)
 
-  let rec input_and_validate_loop ?(transform = fun x -> x) ?initial get_secret_input =
+  let validate_secret secret =
+    match Secret.Validation.validate secret with
+    | Error (e, _typ) -> Error e
+    | _ -> Ok ()
+
+  let validate_comments comments =
+    let comment_has_empty_lines =
+      String.trim comments |> String.split_on_char '\n' |> List.map String.trim |> List.mem ""
+    in
+    match comment_has_empty_lines with
+    | true -> Error "secrets cannot have empty lines in the middle of the comments"
+    | false -> Ok ()
+
+  let rec input_and_validate_loop ~validate ?initial get_input =
     let remove_trailing_newlines s =
       (* reverse the string and count leading newlines instead of traversing the string
          multiple times to remove trailing newlines *)
@@ -81,8 +94,7 @@ module Prompt = struct
       let trailing_newlines = count_leading_newlines rev_s in
       String.sub s 0 (String.length s - trailing_newlines)
     in
-    let%lwt input = get_secret_input ?initial () in
-    let input = transform input in
+    let%lwt input = get_input ?initial () in
     (* Remove bash commented lines from the secret and any trailing newlines *)
     let secret =
       String.split_on_char '\n' input
@@ -90,20 +102,21 @@ module Prompt = struct
       |> String.concat "\n"
       |> remove_trailing_newlines
     in
-    match Secret.Validation.validate secret with
-    | Error (e, _typ) ->
+    match validate input with
+    | Error e ->
       if is_TTY = false then Shell.die "This secret is in an invalid format: %s" e
       else (
         let%lwt () = Lwt_io.printlf "\nThis secret is in an invalid format: %s" e in
-        if%lwt yesno "Edit again?" then input_and_validate_loop ~initial:input get_secret_input else Lwt.return_error e)
+        if%lwt yesno "Edit again?" then input_and_validate_loop ~validate ~initial:input get_input
+        else Lwt.return_error e)
     | _ -> Lwt.return_ok secret
 
   (** Gets and validates user input reading from stdin. If the input has the wrong format, the user
       is prompted to reinput the secret with the correct format. Allows passing in a function for input
       transformation. Throws an error if the transformed input doesn't comply with the format and the
       user doesn't want to fix the input format. *)
-  let get_valid_input_from_stdin_exn ?transform () =
-    match%lwt input_and_validate_loop ?transform read_input_from_stdin with
+  let get_valid_input_from_stdin_exn ?(validate = validate_secret) () =
+    match%lwt input_and_validate_loop ~validate read_input_from_stdin with
     | Error e -> Shell.die "This secret is in an invalid format: %s" e
     | Ok secret -> Lwt.return_ok secret
 end
@@ -427,7 +440,8 @@ module Edit_cmd = struct
       Invariant.run_if_recipient ~op_string:"edit secret" ~path:(path_of_secret_name secret_name) ~f:(fun () ->
           Edit.edit_secret secret_name ~allow_retry:true ~get_updated_secret:(fun initial ->
               Prompt.input_and_validate_loop
-              (* when we are editing a secret, we know `initial` is Some and we add the format explainer to it *)
+                ~validate:Prompt.validate_secret
+                  (* when we are editing a secret, we know `initial` is Some and we add the format explainer to it *)
                 ?initial:(Option.map (fun i -> i ^ Secret.format_explainer) initial)
                 (Edit.new_text_from_editor ~name:(show_name secret_name))))
 
@@ -802,7 +816,7 @@ module New = struct
   let create_new_secret secret_name =
     let%lwt () =
       Edit.edit_secret ~self_fallback:true secret_name ~allow_retry:true ~get_updated_secret:(fun initial ->
-          Prompt.input_and_validate_loop
+          Prompt.input_and_validate_loop ~validate:Prompt.validate_secret
             ~initial:(Option.value ~default:Secret.format_explainer initial)
             (Edit.new_text_from_editor ~name:(show_name secret_name)))
     in
@@ -901,35 +915,24 @@ module Replace = struct
                 | false -> "\n\n" ^ new_secret_plaintext)
             | true ->
               (* if there is already a secret, recreate or replace it *)
-              let%lwt original_secret' =
-                (* Get the original secret if we are in the recipient list, otherwise fully replace it *)
-                try%lwt Storage.Secrets.decrypt_exn ~silence_stderr:true secret_name with _ -> Lwt.return ""
-              in
-              let original_secret =
-                try Ok (Secret.Validation.parse_exn original_secret')
-                with _e -> Error "failed to parse original secret"
-              in
-              let extract_comments ~f ~default secret =
-                Result.map (fun ({ comments; _ } : Secret.t) -> Option.map f comments |> Option.value ~default) secret
-                |> Result.value ~default
-              in
-              (* if the input doesn't have a newline char at the end we need to add one *)
-              let new_secret_plaintext =
-                match String.ends_with ~suffix:"\n" new_secret_plaintext with
-                | true -> new_secret_plaintext
-                | false -> new_secret_plaintext ^ "\n"
+              let%lwt original_secret =
+                try%lwt
+                  let%lwt secret_plaintext = Storage.Secrets.decrypt_exn ~silence_stderr:true secret_name in
+                  Lwt.return @@ Secret.Validation.parse_exn secret_plaintext
+                with _e ->
+                  Shell.die
+                    "E: unable to parse secret %s's format. If we proceed, the comments will be lost. Aborting. Please \
+                     use the edit command to replace and fix this secret."
+                    (show_name secret_name)
               in
               Lwt.return
                 (match is_singleline_secret with
                 | true ->
-                  new_secret_plaintext
-                  ^ extract_comments ~f:(fun comments -> "\n" ^ comments) ~default:"" original_secret
+                  Secret.singleline_from_text_description new_secret_plaintext
+                    (Option.value ~default:"" original_secret.comments)
                 | false ->
-                  (* add an empty line before comments and before the secret,
-                     or just an empty line if there are no comments *)
-                  extract_comments ~f:(fun comments -> "\n" ^ comments ^ "\n") ~default:"\n" original_secret
-                  ^ "\n"
-                  ^ new_secret_plaintext)
+                  Secret.multiline_from_text_description new_secret_plaintext
+                    (Option.value ~default:"" original_secret.comments))
           in
           try%lwt Encrypt.encrypt_exn ~plaintext:updated_secret ~secret_name recipients
           with exn -> Shell.die ~exn "E: encrypting %s failed" (show_name secret_name))
@@ -941,6 +944,71 @@ module Replace = struct
     in
     let info = Cmd.info "replace" ~doc in
     let term = main_run Term.(const replace_secret $ Flags.secret_name) in
+    Cmd.v info term
+end
+
+module Replace_comments = struct
+  let replace_comment secret_name =
+    let recipients = Storage.Secrets.(get_recipients_from_path_exn @@ to_path secret_name) in
+    let secret_name_str = show_name secret_name in
+    match recipients with
+    | [] ->
+      Shell.die
+        {|E: No recipients found (use "passage {create,new} folder/new_secret_name" to use recipients associated with $PASSAGE_IDENTITY instead)|}
+        secret_name_str
+    | _ ->
+      Invariant.run_if_recipient ~op_string:"replace comments" ~path:(path_of_secret_name secret_name) ~f:(fun () ->
+          let%lwt updated_secret =
+            match Storage.Secrets.secret_exists secret_name with
+            | false -> Shell.die "E: no such secret: %s" secret_name_str
+            | true ->
+              let%lwt original_secret =
+                try%lwt
+                  let%lwt original_secret_plaintext = Storage.Secrets.decrypt_exn ~silence_stderr:true secret_name in
+                  Lwt.return @@ Secret.Validation.parse_exn original_secret_plaintext
+                with _e ->
+                  Shell.die
+                    "E: unable to parse secret %s's format. Please fix it before replacing the comments,or use the \
+                     edit command"
+                    secret_name_str
+              in
+              let get_comments_from_stdin () =
+                let%lwt () =
+                  Prompt.input_help_if_user_input
+                    ~msg:"Please type the new comments and then do Ctrl+d twice to terminate input" ()
+                in
+                let%lwt new_comments = Prompt.read_input_from_stdin () in
+                match Prompt.validate_comments new_comments with
+                | Error e -> Shell.die "The comments are in an invalid format: %s" e
+                | _ -> Lwt.return new_comments
+              in
+              let get_comments_from_editor () =
+                match%lwt
+                  Prompt.input_and_validate_loop ~validate:Prompt.validate_comments ?initial:original_secret.comments
+                    (Edit.new_text_from_editor ~name:(show_name secret_name))
+                with
+                | Error e -> Shell.die "The comments are in an invalid format: %s" e
+                | Ok secret -> Lwt.return secret
+              in
+              let%lwt new_comments =
+                match Prompt.is_TTY with
+                | false -> get_comments_from_stdin ()
+                | true -> get_comments_from_editor ()
+              in
+              let updated_secret =
+                match original_secret.kind with
+                | Secret.Singleline -> Secret.singleline_from_text_description original_secret.text new_comments
+                | Secret.Multiline -> Secret.multiline_from_text_description original_secret.text new_comments
+              in
+              Lwt.return updated_secret
+          in
+          try%lwt Encrypt.encrypt_exn ~plaintext:updated_secret ~secret_name recipients
+          with exn -> Shell.die ~exn "E: encrypting %s failed" secret_name_str)
+
+  let replace_comments =
+    let doc = "replaces the comments of the specified secret, keeping the secret." in
+    let info = Cmd.info "replace-comment" ~doc in
+    let term = main_run Term.(const replace_comment $ Flags.secret_name) in
     Cmd.v info term
 end
 
@@ -1268,6 +1336,7 @@ let () =
       Realpath.realpath;
       Refresh.refresh;
       Replace.replace;
+      Replace_comments.replace_comments;
       Rm.rm;
       Search.search;
       Get.secret;
