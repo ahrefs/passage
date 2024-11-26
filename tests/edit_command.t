@@ -45,7 +45,7 @@ Should fail - passing in malformed secrets
   This secret is in an invalid format: multiline: empty secret
   [1]
   $ EDITOR=$LEGACY_SINGLELINE passage edit 00/existing_secret
-  This secret is in an invalid format: legacy single line secret format. Please use the correct format
+  This secret is in an invalid format: single-line secrets with comments should have an empty line between the secret and the comments.
   [1]
   $ passage get 00/existing_secret
   BYE

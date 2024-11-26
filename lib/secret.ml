@@ -26,6 +26,32 @@ let multiline_from_text_description text description =
   | "" -> Printf.sprintf "\n\n%s" text
   | _ -> Printf.sprintf "\n%s\n\n%s" description text
 
+let format_explainer =
+  {|
+
+# Secrets and comments formats:
+# (multi-line comments _should not_ have empty lines in them)
+#
+# Single line secret with commments format:
+#     secret one line
+#     <empty line>
+#     comments until end of file
+#
+# Single line secret without commments format:
+#     secret one line
+#
+# Multiline secret with comments format:
+#     <empty line>
+#     possibly several lines of comments
+#     <empty line>
+#     secret until end of file
+#
+# Multiline secret without comments format:
+#     <empty line>
+#     <empty line>
+#     secret until end of file
+|}
+
 module Validation = struct
   type validation_error =
     | SingleLineLegacy
@@ -72,7 +98,9 @@ module Validation = struct
         | false -> Ok Singleline)
       (* We don't want to allow the creation of new secrets in legacy single-line format *)
       | secret :: comment :: _ when String.trim secret <> "" && String.trim comment <> "" ->
-        Error ("legacy single line secret format. Please use the correct format", SingleLineLegacy)
+        Error
+          ( "single-line secrets with comments should have an empty line between the secret and the comments.",
+            SingleLineLegacy )
       (* single-line without comments *)
       | [ secret ] when String.trim secret <> "" -> Ok Singleline
       | _ -> Error ("invalid format", InvalidFormat))
