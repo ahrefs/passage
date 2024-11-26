@@ -65,12 +65,21 @@ module Prompt = struct
 
   let rec input_and_validate_loop ?(transform = fun x -> x) ?initial get_secret_input =
     let remove_trailing_newlines s =
-      let rec loop s =
-        match String.ends_with ~suffix:"\n" s with
-        | true -> loop (String.sub s 0 (String.length s - 1))
-        | false -> s
+      (* reverse the string and count leading newlines instead of traversing the string
+         multiple times to remove trailing newlines *)
+      let rev_s =
+        let chars = List.of_seq (String.to_seq s) in
+        String.of_seq (List.to_seq (List.rev chars))
       in
-      loop s
+      let rec count_leading_newlines ?(acc = 0) ?(i = 0) s =
+        try
+          match s.[i] = '\n' with
+          | true -> count_leading_newlines ~acc:(acc + 1) ~i:(i + 1) s
+          | false -> i
+        with _ -> (* out of bounds edge case *) i - 1
+      in
+      let trailing_newlines = count_leading_newlines rev_s in
+      String.sub s 0 (String.length s - trailing_newlines)
     in
     let%lwt input = get_secret_input ?initial () in
     let input = transform input in
@@ -86,8 +95,7 @@ module Prompt = struct
       if is_TTY = false then Shell.die "This secret is in an invalid format: %s" e
       else (
         let%lwt () = Lwt_io.printlf "\nThis secret is in an invalid format: %s" e in
-        if%lwt yesno "Edit again?" then input_and_validate_loop ?initial:(Some input) get_secret_input
-        else Lwt.return_error e)
+        if%lwt yesno "Edit again?" then input_and_validate_loop ~initial:input get_secret_input else Lwt.return_error e)
     | _ -> Lwt.return_ok secret
 
   (** Gets and validates user input reading from stdin. If the input has the wrong format, the user
@@ -97,7 +105,7 @@ module Prompt = struct
   let get_valid_input_from_stdin_exn ?transform () =
     match%lwt input_and_validate_loop ?transform read_input_from_stdin with
     | Error e -> Shell.die "This secret is in an invalid format: %s" e
-    | Ok secret -> Lwt.return secret
+    | Ok secret -> Lwt.return_ok secret
 end
 
 module Encrypt = struct
@@ -173,9 +181,10 @@ If the secret is a staging secret, its only recipient should be @everyone.
     in
     try%lwt
       let%lwt updated_secret = get_updated_secret original_secret in
-      match updated_secret = Option.value original_secret ~default:"" || updated_secret = "" with
-      | true -> Exn.fail "I: secret unchanged"
-      | false ->
+      match updated_secret, original_secret with
+      | Ok updated_secret, Some original_secret when updated_secret = original_secret -> Exn.fail "I: secret unchanged"
+      | Error e, _ -> Shell.die "E: %s" e
+      | Ok updated_secret, _ ->
         let secret_path = path_of_secret_name secret_name in
         let secret_recipients' = Storage.Secrets.get_recipients_from_path_exn secret_path in
         let%lwt secret_recipients =
@@ -417,13 +426,10 @@ module Edit_cmd = struct
     | true ->
       Invariant.run_if_recipient ~op_string:"edit secret" ~path:(path_of_secret_name secret_name) ~f:(fun () ->
           Edit.edit_secret secret_name ~allow_retry:true ~get_updated_secret:(fun initial ->
-              let%lwt secret =
-                Prompt.input_and_validate_loop
-                (* when we are editing a secret, we know `initial` is Some and we add the format explainer to it *)
-                  ?initial:(Option.map (fun i -> i ^ Secret.format_explainer) initial)
-                  (Edit.new_text_from_editor ~name:(show_name secret_name))
-              in
-              Lwt.return (Result.value ~default:"" secret)))
+              Prompt.input_and_validate_loop
+              (* when we are editing a secret, we know `initial` is Some and we add the format explainer to it *)
+                ?initial:(Option.map (fun i -> i ^ Secret.format_explainer) initial)
+                (Edit.new_text_from_editor ~name:(show_name secret_name))))
 
   let edit =
     let doc = "edit the contents of the specified secret" in
@@ -796,12 +802,9 @@ module New = struct
   let create_new_secret secret_name =
     let%lwt () =
       Edit.edit_secret ~self_fallback:true secret_name ~allow_retry:true ~get_updated_secret:(fun initial ->
-          let%lwt secret =
-            Prompt.input_and_validate_loop
-              ~initial:(Option.value ~default:Secret.format_explainer initial)
-              (Edit.new_text_from_editor ~name:(show_name secret_name))
-          in
-          Lwt.return (Result.value ~default:"" secret))
+          Prompt.input_and_validate_loop
+            ~initial:(Option.value ~default:Secret.format_explainer initial)
+            (Edit.new_text_from_editor ~name:(show_name secret_name)))
     in
     let secret_path = path_of_secret_name secret_name in
     let original_recipients = Storage.Secrets.get_recipients_from_path_exn secret_path in
