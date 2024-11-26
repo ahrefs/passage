@@ -42,6 +42,7 @@ build: [
   ]
 ]
 dev-repo: "git+https://github.com/ahrefs/passage.git"
+available: os != "win32"
 x-ci-accept-failures: [
   "alpine-3.20"
   "archlinux"
