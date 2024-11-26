@@ -1007,7 +1007,7 @@ module Replace_comments = struct
 
   let replace_comments =
     let doc = "replaces the comments of the specified secret, keeping the secret." in
-    let info = Cmd.info "replace-cmt" ~doc in
+    let info = Cmd.info "replace-comment" ~doc in
     let term = main_run Term.(const replace_comment $ Flags.secret_name) in
     Cmd.v info term
 end
