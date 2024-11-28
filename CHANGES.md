@@ -1,3 +1,6 @@
+## 0.1.6 (2024-11-28)
+- fix small bug with the input_and_validate_loop fn and empty secrets
+
 ## 0.1.5 (2024-11-26)
 - Add replace-comment command
 - Make new and edit commands usage uniform
