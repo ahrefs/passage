@@ -102,7 +102,7 @@ module Prompt = struct
       |> String.concat "\n"
       |> remove_trailing_newlines
     in
-    match validate input with
+    match validate secret with
     | Error e ->
       if is_TTY = false then Shell.die "This secret is in an invalid format: %s" e
       else (
