@@ -1,0 +1,214 @@
+#compdef passage
+
+local curcontext="$curcontext" ret=1
+local -a state line args
+
+_arguments -C \
+  '1: :->cmds' \
+  '*:: :->args' && ret=0
+
+# Helper function to process directories and files
+_process_completions() {
+  local search_dir="$1"
+  local dir_prefix="$2"
+  local -a completions=()
+
+  # Get directories and files for current level
+  local files=($search_dir/*.age(N))
+  local dirs=($search_dir/*(N/))
+
+  # Process directories first
+  for d in $dirs; do
+    [[ $d == $search_dir ]] && continue  # Skip base dir
+    completions+=(${d#$dir_prefix/}/)
+  done
+
+  # Process files, strip .age and dir prefix
+  for f in $files; do
+    completions+=(${${f#$dir_prefix/}%.age})
+  done
+
+  echo "${completions[@]}"
+}
+
+_passage_secrets() {
+  local dir=${PASSAGE_SECRETS:-$HOME/.config/passage/secrets}
+  local current="${words[$CURRENT]}"
+  local prefix="${current%/*}"
+  local search_dir="$dir"
+
+  # If we have a prefix, search in that directory
+  if [[ -n "$prefix" && "$current" == */* ]]; then
+    search_dir="$dir/$prefix"
+  fi
+
+  # Get completions and show them
+  local completions=($(_process_completions "$search_dir" "$dir"))
+  compadd -Q -S '' -q -- ${completions}
+}
+
+_passage_secrets_and_folders() {
+  local dir=${PASSAGE_SECRETS:-$HOME/.config/passage/secrets}
+  local current="${words[$CURRENT]}"
+  local prefix="${current%/*}"
+  local search_dir="$dir"
+
+  # If we have a prefix, search in that directory
+  if [[ -n "$prefix" && "$current" == */* ]]; then
+    search_dir="$dir/$prefix"
+  fi
+
+  # Get completions and show them
+  local completions=($(_process_completions "$search_dir" "$dir"))
+  compadd -Q -S '' -q -- ${completions}
+}
+
+_passage_recipients() {
+  local -a recipients groups
+  local keys_dir=${PASSAGE_KEYS:-$HOME/.config/passage/keys}
+  if [[ -d $keys_dir ]]; then
+    # Get groups first, strip .group extension and add @ prefix
+    groups=(${keys_dir}/**/*.group(:t:r))
+    groups=("${(@)groups/#/@}")  # Add @ prefix to all elements
+
+    # Get regular recipients (.pub files)
+    recipients=(${keys_dir}/**/*.pub(:t:r))
+
+    # Combine groups and recipients
+    recipients=($groups $recipients)
+  fi
+  compadd -Q -S '' -a recipients
+}
+
+_passage_recipients_and_paths() {
+  local dir=${PASSAGE_SECRETS:-$HOME/.config/passage/secrets}
+  local keys_dir=${PASSAGE_KEYS:-$HOME/.config/passage/keys}
+  local current="${words[$CURRENT]}"
+  local prefix="${current%/*}"
+  local search_dir="$dir"
+  local completions=()
+
+  # Add groups at the top level
+  if [[ -d $keys_dir && "$current" != */* ]]; then
+    local groups=(${keys_dir}/**/*.group(:t:r))
+    groups=("${(@)groups/#/@}")  # Add @ prefix to all elements
+    completions+=($groups)
+  fi
+
+  # If we have a prefix, search in that directory
+  if [[ -n "$prefix" && "$current" == */* ]]; then
+    search_dir="$dir/$prefix"
+  fi
+
+  # Get completions and show them
+  completions+=($(_process_completions "$search_dir" "$dir"))
+  compadd -Q -S '' -q -- ${completions}
+}
+
+case "$state" in
+  cmds)
+    local -a commands
+    commands=(
+      'cat:get the whole contents of the specified secret, including comments'
+      'create:creates a new secret from stdin'
+      'delete:remove a secret or a folder and its secrets'
+      'edit:edit the contents of the specified secret'
+      'edit-who:edit the recipients of the specified path'
+      'get:get the text of the specified secret, excluding comments'
+      'healthcheck:check for issues with secrets, find directories that do not have keys'
+      'init:initial setup of passage'
+      'list:recursively list all secrets'
+      'ls:recursively list all secrets'
+      'new:interactive creation of a new single-line secret'
+      'realpath:show the full filesystem path to secrets/folders'
+      'refresh:re-encrypt secrets in the specified path(s)'
+      'replace:replaces the contents of the specified secret, keeping the comments'
+      'replace-comment:replaces the comments of the specified secret, keeping the secret'
+      'rm:remove a secret or a folder and its secrets'
+      'search:list secrets containing contents that match the specified pattern'
+      'secret:get the text of the specified secret, excluding comments'
+      'show:recursively list all secrets in a tree-like format'
+      'subst:fill in values in the provided template'
+      'template:outputs target file by substituting all secrets in the template file'
+      'template-secrets:sorted unique list of secret references found in a template'
+      'what:list secrets that a recipient has access to'
+      'who:list all recipients of secrets in the specified path'
+    )
+    _describe -t commands 'passage commands' commands && ret=0
+    ;;
+  args)
+    case $line[1] in
+      get|secret)
+        _arguments \
+          '*:secret name:_passage_secrets' \
+          '(-l --line)'{-l,--line}'[line number of the secret to output]:line number' \
+          '(-s --singleline)'{-s,--singleline}'[outputs secrets only if they are single-line secrets]' \
+          '(-n --no-new-line)'{-n,--no-new-line}'[outputs secrets without the new-line at the end of the output]' \
+          '(-c --clip)'{-c,--clip}'[copy to clipboard]' \
+          '(-q --qrcode)'{-q,--qrcode}'[display as QR code]' && ret=0
+        ;;
+      cat)
+        _arguments \
+          '*:secret name:_passage_secrets' \
+          '(-l --line)'{-l,--line}'[line number of the secret to output]:line number' \
+          '(-c --clip)'{-c,--clip}'[copy to clipboard]' \
+          '(-q --qrcode)'{-q,--qrcode}'[display as QR code]' && ret=0
+        ;;
+      delete|rm)
+        _arguments \
+          '*:secret or folder:_passage_secrets_and_folders' \
+          '(-f --force)'{-f,--force}'[delete without asking for confirmation]' \
+          '(-v --verbose)'{-v,--verbose}'[print verbose output]' && ret=0
+        ;;
+      edit-who|list|ls|show)
+        _arguments \
+          '*:secret path:_passage_secrets_and_folders' && ret=0
+        ;;
+      edit|replace|replace-comment)
+        _arguments \
+          '*:secret path:_passage_secrets' && ret=0
+        ;;
+      healthcheck)
+        _arguments \
+          '(- --dry-run-upgrade-legacy-secrets --upgrade-legacy-secrets)'{--dry-run-upgrade-legacy-secrets,--upgrade-legacy-secrets}'[dry run on the legacy secrets upgrade or upgrade found legacy secrets]' \
+          '(-v --verbose)'{-v,--verbose}'[print verbose output]' && ret=0
+        ;;
+      realpath|refresh)
+        _arguments \
+          '*:path:_passage_secrets_and_folders' \
+          '(-v --verbose)'{-v,--verbose}'[print verbose output]' && ret=0
+        ;;
+      search)
+        _arguments \
+          '1:pattern' \
+          '*:path:_passage_secrets_and_folders' \
+          '(-v --verbose)'{-v,--verbose}'[print verbose output]' && ret=0
+        ;;
+      subst)
+        _arguments \
+          '1:template string' && ret=0
+        ;;
+      template)
+        _arguments \
+          '1:template file:_files' \
+          '2:target file:_files' && ret=0
+        ;;
+      template-secrets)
+        _arguments \
+          '1:template file:_files' && ret=0
+        ;;
+      what)
+        _arguments \
+          '*:recipient name:_passage_recipients' \
+          '(-v --verbose)'{-v,--verbose}'[print verbose output]' && ret=0
+        ;;
+      who)
+        _arguments \
+          '*:path:_passage_recipients_and_paths' \
+          '(-f --expand-groups)'{-f,--expand-groups}'[expand groups of recipients]' && ret=0
+        ;;
+    esac
+    ;;
+esac
+
+return ret
