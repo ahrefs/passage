@@ -6,7 +6,7 @@
 
 ```sh
 apt install age
-opam install . --deps-only
+opam install . --deps-only --with-dev-setup
 ```
 
 ## Development
@@ -19,7 +19,15 @@ make build
 Running tests
 ```
 make test
+ # or
+make promote
 ```
+
+Running linting
+```
+make fmt
+```
+
 
 ## Secret format
 
