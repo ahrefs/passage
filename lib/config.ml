@@ -8,7 +8,11 @@ let base_dir =
    are raised only when we do use these paths.
 *)
 let keys_dir =
-  lazy (Option.value (Sys.getenv_opt "PASSAGE_KEYS") ~default:(Filename.concat base_dir "keys") |> ExtUnix.All.realpath)
+  lazy
+    (let path = Option.value (Sys.getenv_opt "PASSAGE_KEYS") ~default:(Filename.concat base_dir "keys") in
+     try ExtUnix.All.realpath path
+     with Unix.Unix_error (Unix.ENOENT, "realpath", _) ->
+       Printf.ksprintf failwith "keys directory (%s) is not initialised" path)
 
 let secrets_dir =
   lazy
