@@ -10,29 +10,31 @@
       let
         pkgs = nixpkgs.legacyPackages.${system};
         on = opam-nix.lib.${system};
-        scope =
-          on.buildOpamProject { } package ./. { 
-            ocaml-base-compiler = "*";
+        scope = on.buildOpamProject {
+          resolveArgs = {
+            # Add extra nixpkgs deps for conf packages
+            extraPackages = with pkgs; [ pkg-config ];
           };
+        } package ./. { ocaml-base-compiler = "*"; };
         overlay = final: prev: {
-          ${package} = prev.${package}.overrideAttrs (old: {
-            buildInputs = (old.buildInputs or [ ]) ++ [ 
-              pkgs.age
-            ];
-          });
+          ${package} = prev.${package}.overrideAttrs
+            (old: { buildInputs = (old.buildInputs or [ ]) ++ [ pkgs.age ]; });
         };
       in {
-        legacyPackages = scope.overrideScope' overlay;
+        legacyPackages = scope.overrideScope overlay;
         packages.default = self.legacyPackages.${system}.${package};
 
         devShell = pkgs.mkShell {
           inputsFrom = [ self.packages.${system}.default ];
-          buildInputs = [
-            pkgs.age
-          ];
+          buildInputs = with pkgs; [ age ];
+          nativeBuildInputs = with pkgs; [ pkg-config ];
           shellHook = ''
             # Source the completion script
             source ${./passage-completion.sh}
+            if [[ -n "$ZSH_VERSION" ]]; then
+              autoload -Uz _passage
+              compdef _passage passage
+            fi
           '';
         };
       });
