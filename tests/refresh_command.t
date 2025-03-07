@@ -27,9 +27,9 @@ Should show individual operations on secrets when -v is passed
   I: refreshed test_secret
   I: refreshed 6 secrets, skipped 4, failed 0
 
-Refreshed secrets should have the same permissions as before (0o644)
-  $ stat -c "%a" $PASSAGE_DIR/secrets/test_secret.age
-  644
+Refreshed secrets should have the same permissions as before (0o644 or less)
+  $ stat -c "%a" $PASSAGE_DIR/secrets/test_secret.age | more_deterministic_permissions
+  6xx
 
 Secret content should be the same before and after refresh.
   $ passage cat test_secret

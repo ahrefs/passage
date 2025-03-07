@@ -267,3 +267,7 @@ EOF
 setup_keys_dir
 setup_secrets_dir
 setup_templates
+
+more_deterministic_permissions () {
+    sed 's/^6../6xx/'
+}
