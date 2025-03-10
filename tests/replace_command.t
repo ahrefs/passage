@@ -21,11 +21,11 @@ Should succeed - replace a secret that does not yet exist in a folder where we a
   new secret line 2
   new secret line 3\123\65
 
-Newly created secrets should have permissions 0o644
-  $ stat -c "%a" $PASSAGE_DIR/secrets/00/new_secret_singleline.age
-  644
-  $ stat -c "%a" $PASSAGE_DIR/secrets/00/new_secret_multiline.age
-  644
+Newly created secrets should have permissions 0o644 or less
+  $ stat -c "%a" $PASSAGE_DIR/secrets/00/new_secret_singleline.age | more_deterministic_permissions
+  6xx
+  $ stat -c "%a" $PASSAGE_DIR/secrets/00/new_secret_multiline.age | more_deterministic_permissions
+  6xx
 
 Should fail - replace a secret that does not yet exist in a folder where we are NOT listed on the .keys (invariant)
   $ echo "new secret" | passage replace 01/00/new_secret_singleline

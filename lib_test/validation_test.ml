@@ -55,7 +55,8 @@ let%expect_test "legacy single-line with comments" =
   test_validate {|secret
 comment
 comment|};
-  [%expect {| Error: single-line secrets with comments should have an empty line between the secret and the comments. |}]
+  [%expect
+    {| Error: single-line secrets with comments should have an empty line between the secret and the comments. |}]
 
 let%expect_test "single-line without comments" =
   test_validate {|secret|};
