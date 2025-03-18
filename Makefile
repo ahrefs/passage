@@ -6,7 +6,7 @@ build:
 
 .PHONY: fmt
 fmt:
-	dune fmt
+	dune fmt --auto-promote
 
 .PHONY: test
 test:
