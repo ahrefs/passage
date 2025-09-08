@@ -228,13 +228,10 @@ module Secrets = struct
     let%lwt () = encrypt_using_tmpfile ~secret_name ~encrypt_to_stdout:(Age.encrypt_to_stdout ~recipients ~plaintext) in
     Lwt.return_unit
 
-  let no_identity_file_exn_str = "no identity file found. Is passage setup? Try 'passage init'."
-
   let decrypt_exn ?(silence_stderr = false) secret_name =
     let secret_file = Path.(project @@ abs @@ agefile_of_name secret_name) in
     let fd = Unix.openfile secret_file [ O_RDONLY ] 0o400 in
-    try Age.decrypt_from_stdin ~identity_file:!!Config.identity_file ~stdin:(`FD_move fd) ~silence_stderr
-    with Unix.Unix_error (Unix.ENOENT, "realpath", _) -> failwith no_identity_file_exn_str
+    Age.decrypt_from_stdin ~identity_file:!!Config.identity_file ~stdin:(`FD_move fd) ~silence_stderr
 
   let refresh' ?(force = false) secret_name self_key =
     match force || is_recipient_of_secret self_key secret_name with

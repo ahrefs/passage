@@ -63,7 +63,7 @@ Should fail - invalid template file
 
 Should fail - no identity file
   $ PASSAGE_IDENTITY=dfsd.key passage template $PASSAGE_DIR/templates/multiple_secrets.txt
-  E: failed to substitute file : Failure("no identity file found. Is passage setup? Try 'passage init'.")
+  E: failed to substitute file : Failure("unable to decrypt secret: no identity file found (dfsd.key). Is passage setup? Try 'passage init'.")
   [1]
 
 Should fail - no identity file

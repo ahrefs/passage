@@ -19,10 +19,7 @@ let substitute_iden node =
        let secret = Secret.Validation.parse_exn plaintext in
        Lwt.return @@ Template_ast.Text secret.text
      with
-    | Failure s as exn ->
-      (match s = Storage.Secrets.no_identity_file_exn_str with
-      | true -> Lwt.reraise exn
-      | false -> failwith ("unable to decrypt secret: " ^ s))
+    | Failure s -> failwith ("unable to decrypt secret: " ^ s)
     | exn ->
       let%lwt () = Lwt_io.eprintlf "E: could not decrypt secret %s" (Storage.Secret_name.project secret_name) in
       Lwt.reraise exn)

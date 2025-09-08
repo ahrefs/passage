@@ -12,17 +12,21 @@ let keys_dir =
     (let path = Option.value (Sys.getenv_opt "PASSAGE_KEYS") ~default:(Filename.concat base_dir "keys") in
      try ExtUnix.All.realpath path
      with Unix.Unix_error (Unix.ENOENT, "realpath", _) ->
-       Printf.ksprintf failwith "keys directory (%s) is not initialised" path)
+       Printf.ksprintf failwith "keys directory (%s) is not initialised. Is passage setup? Try 'passage init'." path)
 
 let secrets_dir =
   lazy
-    (Option.value (Sys.getenv_opt "PASSAGE_SECRETS") ~default:(Filename.concat base_dir "secrets")
-    |> ExtUnix.All.realpath)
+    (let path = Option.value (Sys.getenv_opt "PASSAGE_SECRETS") ~default:(Filename.concat base_dir "secrets") in
+     try ExtUnix.All.realpath path
+     with Unix.Unix_error (Unix.ENOENT, "realpath", _) ->
+       Printf.ksprintf failwith "secrets directory (%s) is not initialised. Is passage setup? Try 'passage init'." path)
 
 let identity_file =
   lazy
-    (Option.value (Sys.getenv_opt "PASSAGE_IDENTITY") ~default:(Filename.concat base_dir "identity.key")
-    |> ExtUnix.All.realpath)
+    (let path = Option.value (Sys.getenv_opt "PASSAGE_IDENTITY") ~default:(Filename.concat base_dir "identity.key") in
+     try ExtUnix.All.realpath path
+     with Unix.Unix_error (Unix.ENOENT, "realpath", _) ->
+       Printf.ksprintf failwith "no identity file found (%s). Is passage setup? Try 'passage init'." path)
 
 let x_selection = Option.value (Sys.getenv_opt "PASSAGE_X_SELECTION") ~default:"clipboard"
 
