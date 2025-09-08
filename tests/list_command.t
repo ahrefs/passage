@@ -201,3 +201,8 @@ Should fail - multi-level invalid path
   $ passage ls 01/invalid_path
   No secrets at 01/invalid_path
   [1]
+
+Should fail gracefully - invalid setup
+  $ PASSAGE_DIR=. passage list 01
+  E: 01 : Failure("secrets directory (./secrets) is not initialised. Is passage setup? Try 'passage init'.")
+  [1]

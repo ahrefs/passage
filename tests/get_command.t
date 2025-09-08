@@ -186,3 +186,8 @@ Should succeed - decrypting a secret by a member of a group
   (03/secret1) secret: single line
   $ PASSAGE_IDENTITY=tommy.tom.key passage get 03/secret1
   (03/secret1) secret: single line
+
+Should fail gracefully - invalid setup
+  $ PASSAGE_DIR=. passage get 03/secret1
+  E: 03/secret1 : Failure("secrets directory (./secrets) is not initialised. Is passage setup? Try 'passage init'.")
+  [1]

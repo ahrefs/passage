@@ -527,7 +527,10 @@ module Get = struct
   end
 
   let get_secret ?expected_kind ?line_number ~with_comments ?(trim_new_line = false) secret_name output_mode =
-    match Storage.Secrets.secret_exists secret_name with
+    let secret_exists =
+      try Storage.Secrets.secret_exists secret_name with exn -> Shell.die ~exn "E: %s" (show_name secret_name)
+    in
+    match secret_exists with
     | false ->
       if Path.is_directory Storage.Secrets.(to_path secret_name |> Path.abs) then
         Shell.die "E: %s is a directory" (show_name secret_name)
@@ -790,14 +793,18 @@ end
 module List_ = struct
   let list_secrets path =
     let raw_path = show_path path in
-    match Storage.Secrets.secret_exists_at path with
+    let%lwt secret_exists = try Lwt.return (Storage.Secrets.secret_exists_at path) with _exn -> Lwt.return false in
+    match secret_exists with
     | true -> Lwt_io.printl Storage.Secrets.(name_of_file (Path.abs path) |> show_name)
     | false ->
-    match Path.is_directory (Path.abs path) with
-    | true ->
-      Storage.(Secrets.get_secrets_tree path |> List.sort Secret_name.compare)
-      |> Lwt_list.iter_s (fun s -> Lwt_io.printl @@ show_name s)
-    | false -> Shell.die "No secrets at %s" raw_path
+      let%lwt is_dir =
+        try Lwt.return (Path.is_directory (Path.abs path)) with exn -> Shell.die ~exn "E: %s" raw_path
+      in
+      (match is_dir with
+      | true ->
+        Storage.(Secrets.get_secrets_tree path |> List.sort Secret_name.compare)
+        |> Lwt_list.iter_s (fun s -> Lwt_io.printl @@ show_name s)
+      | false -> Shell.die "No secrets at %s" raw_path)
 
   let list =
     let doc = "recursively list all secrets" in
