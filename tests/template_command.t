@@ -61,6 +61,16 @@ Should fail - invalid template file
   E: failed to substitute file : Sys_error("non_existent_template: No such file or directory")
   [1]
 
+Should fail - no identity file
+  $ PASSAGE_IDENTITY=dfsd.key passage template $PASSAGE_DIR/templates/multiple_secrets.txt
+  E: failed to substitute file : Failure("no identity file found. Is passage setup? Try 'passage init'.")
+  [1]
+
+Should fail - no identity file
+  $ PASSAGE_IDENTITY=poppy.pop.key passage template $PASSAGE_DIR/templates/multiple_secrets.txt
+  E: failed to substitute file : Failure("unable to decrypt secret: age --decrypt --identity $TESTCASE_ROOT/poppy.pop.key : exit code 1")
+  [1]
+
 Should fail - unable to decrypt a secret
   $ passage template $PASSAGE_DIR/templates/inaccessible_secret.txt $TARGET 2>&1 | grep -m 1 "^E: could not"
   E: could not decrypt secret 01/00/secret3

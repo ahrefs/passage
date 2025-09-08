@@ -15,12 +15,17 @@ let substitute_iden node =
   | Template_ast.Iden name ->
     let secret_name = Storage.Secret_name.inject name in
     (try%lwt
-       let%lwt plaintext = Storage.Secrets.decrypt_exn secret_name in
+       let%lwt plaintext = Storage.Secrets.decrypt_exn ~silence_stderr:true secret_name in
        let secret = Secret.Validation.parse_exn plaintext in
        Lwt.return @@ Template_ast.Text secret.text
-     with exn ->
-       let%lwt () = Lwt_io.eprintlf "E: could not decrypt secret %s" (Storage.Secret_name.project secret_name) in
-       Lwt.fail exn)
+     with
+    | Failure s as exn ->
+      (match s = Storage.Secrets.no_identity_file_exn_str with
+      | true -> Lwt.reraise exn
+      | false -> failwith ("unable to decrypt secret: " ^ s))
+    | exn ->
+      let%lwt () = Lwt_io.eprintlf "E: could not decrypt secret %s" (Storage.Secret_name.project secret_name) in
+      Lwt.reraise exn)
 
 let build_text_from_ast ast =
   List.map

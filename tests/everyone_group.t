@@ -30,7 +30,7 @@ GET, CAT - should allow all the users to decrypt
   $ PASSAGE_IDENTITY=tommy.tom.key passage get 04/secret1
   (04/secret1) secret: single line
   $ PASSAGE_IDENTITY=user.with.missing.key passage get 04/secret1
-  E: failed to decrypt 04/secret1 : Unix_error realpath(user.with.missing.key) No such file or directory
+  E: failed to decrypt 04/secret1 : Failure("no identity file found. Is passage setup? Try 'passage init'.")
   [1]
 
 EDIT - should allow everyone to edit an existing secret
