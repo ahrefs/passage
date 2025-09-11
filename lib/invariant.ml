@@ -1,5 +1,22 @@
 let die ~op_string = Shell.die "E: refusing to %s: violates invariant" op_string
 
+let get_expanded_recipient_names_from_folder path =
+  try
+    let recipients = Storage.Secrets.get_recipients_from_path_exn path in
+    List.map (fun r -> r.Age.name) recipients |> List.sort_uniq String.compare
+  with _ -> []
+
+let error_not_recipient ~op_string path =
+  let show_path p = Path.project p in
+  let base_folder = Path.folder_of_path path in
+  let%lwt () =
+    Lwt_io.eprintlf "E: user is not a recipient of %s. Please ask one of the following to add you as a recipient:"
+      (show_path base_folder)
+  in
+  let expanded_recipients = get_expanded_recipient_names_from_folder base_folder in
+  let%lwt () = Lwt_list.iter_s (Lwt_io.eprintlf "  %s") expanded_recipients in
+  die ~op_string
+
 let user_is_listed_as_recipient path =
   let open Storage.Secrets in
   let folder_recipients = get_recipients_from_path_exn path in
@@ -10,14 +27,7 @@ let user_is_listed_as_recipient path =
 
 let run_if_recipient ~op_string ~path ~f =
   match%lwt user_is_listed_as_recipient path with
-  | false ->
-    let show_path p = Path.project p in
-    let base_folder = Path.folder_of_path path in
-    let%lwt () =
-      Lwt_io.eprintlf "E: user is not a recipient of %s. Please ask someone to add you as a recipient."
-        (show_path base_folder)
-    in
-    die ~op_string
+  | false -> error_not_recipient ~op_string path
   | true -> f ()
 
 let die_if_invariant_fails ~op_string path =
@@ -31,12 +41,7 @@ let die_if_invariant_fails ~op_string path =
     let show_name name = Storage.Secret_name.project name in
     let base_folder = Path.folder_of_path path in
     match%lwt user_is_listed_as_recipient path with
-    | false ->
-      let%lwt () =
-        Lwt_io.eprintlf "E: user is not a recipient of %s. Please ask someone to add you as a recipient."
-          (show_path base_folder)
-      in
-      die ~op_string
+    | false -> error_not_recipient ~op_string path
     | true ->
       (* if i am listed on the .keys file, check if i can decrypt all the secrets in the folder *)
       let%lwt fails_invariant =

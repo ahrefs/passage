@@ -47,7 +47,11 @@ Should fail - edit recipients when the user is not a recipient of the folder
   host/a
   poppy.pop
   $ EDITOR=$APPEND_ROBBY passage edit-who 03/secret1
-  E: user is not a recipient of 03. Please ask someone to add you as a recipient.
+  E: user is not a recipient of 03. Please ask one of the following to add you as a recipient:
+    host/a
+    poppy.pop
+    robby.rob
+    tommy.tom
   E: refusing to edit recipients: violates invariant
   [1]
 

@@ -51,7 +51,9 @@ Should fail - create secret with wrong format
 
 Should fail - create secret in a directory where we are not a recipient (invariant)
   $ echo "secret" | passage create 01/00/neww
-  E: user is not a recipient of 01/00. Please ask someone to add you as a recipient.
+  E: user is not a recipient of 01/00. Please ask one of the following to add you as a recipient:
+    poppy.pop
+    robby.rob
   E: refusing to create: violates invariant
   [1]
 

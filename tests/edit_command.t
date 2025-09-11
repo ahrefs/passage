@@ -54,7 +54,12 @@ Should fail - editing an existing secret which user is not authorised to view (i
   $ UNAUTHORISED_USER="unauthorised"
   $ setup_identity $UNAUTHORISED_USER
   $ EDITOR=$APPEND_HELLO PASSAGE_IDENTITY=$UNAUTHORISED_USER.key passage edit 00/existing_secret
-  E: user is not a recipient of 00. Please ask someone to add you as a recipient.
+  E: user is not a recipient of 00. Please ask one of the following to add you as a recipient:
+    bobby.bob
+    dobby.dob
+    robby.rob
+    tommy.tom
+    user.with.missing.key
   E: refusing to edit secret: violates invariant
   [1]
   $ passage get 00/existing_secret
