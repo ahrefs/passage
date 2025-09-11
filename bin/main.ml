@@ -291,6 +291,8 @@ Are you sure you would like to continue?|}
     in
     let recipients_groups, current_recipients_names = sorted_base_recipients |> List.partition Age.is_group_recipient in
     let left, right, common = diff_intersect_lists current_recipients_names (Storage.Keys.all_recipient_names ()) in
+    let all_available_groups = Storage.Secrets.all_groups_names () |> List.map (fun g -> "@" ^ g) in
+    let unused_groups = List.filter (fun g -> not (List.mem g recipients_groups)) all_available_groups in
     let recipient_lines =
       (if recipients_groups = [] then [] else ("# Groups " :: recipients_groups) @ [ "" ])
       @ ("# Recipients " :: common)
@@ -299,7 +301,8 @@ Are you sure you would like to continue?|}
       @ "#"
         :: "# Uncomment recipients below to add them. You can also add valid groups names if you want."
         :: "#"
-        :: List.map (fun r -> "# " ^ r) right
+        :: (if unused_groups = [] then [] else "# Available groups:" :: List.map (fun g -> "# " ^ g) unused_groups @ ["#"])
+      @ (if right = [] then [] else "# Available users:" :: List.map (fun r -> "# " ^ r) right)
     in
     with_secure_tmpfile (show_name secret_name) (fun (tmpfile, tmpfile_oc) ->
         (* write and then close to make it available to the editor *)
