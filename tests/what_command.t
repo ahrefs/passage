@@ -59,3 +59,17 @@ Should succeed - multiple users, users with no secrets
   03/secret1
   04/secret1
   05/secret1
+
+Should succeed - my command as an alias for what <my.name>
+  $ passage what bobby.bob
+  00/.secret_starting_with_dot
+  00/secret1
+  01/secret1
+  02/secret1
+  04/secret1
+  $ passage my
+  00/.secret_starting_with_dot
+  00/secret1
+  01/secret1
+  02/secret1
+  04/secret1

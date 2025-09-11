@@ -1211,6 +1211,19 @@ module What = struct
     Cmd.v info term
 end
 
+module My = struct
+  let list_my_secrets () =
+    let%lwt recipients_of_own_id = Storage.Secrets.recipients_of_own_id () in
+    let recipients_names = List.map (fun r -> r.Age.name) recipients_of_own_id in
+    What.list_recipient_secrets recipients_names
+
+  let my =
+    let doc = "list secrets that you have access to (alias for 'what <your.name>')" in
+    let info = Cmd.info "my" ~doc in
+    let term = main_run Term.(const (fun () -> list_my_secrets) $ Flags.set_verbosity $ const ()) in
+    Cmd.v info term
+end
+
 module Who = struct
   let expand_groups =
     let doc = "Expand groups of recipients in the output." in
@@ -1339,6 +1352,7 @@ let () =
       Init.init;
       List_.list;
       List_.ls;
+      My.my;
       New.new_;
       Realpath.realpath;
       Refresh.refresh;
