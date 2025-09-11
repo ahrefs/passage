@@ -98,5 +98,9 @@ Should fail - adding a group that doesn't exist
   $ NO_GROUP="./NO_GROUP.sh"
   $ echo 'echo @no_group >> $1' > $NO_GROUP && chmod +x $NO_GROUP
   $ PASSAGE_IDENTITY=robby.rob.key EDITOR=$NO_GROUP passage edit-who 03/secret1
-  E: group "@no_group" doesn't exist
+  Invalid recipient: @no_group does not exist
   [1]
+
+Should not fail - adding a group that already exists
+  $ PASSAGE_IDENTITY=robby.rob.key EDITOR=$ROOT_AGAIN passage edit-who 03/secret1
+  I: no changes made to the recipients
