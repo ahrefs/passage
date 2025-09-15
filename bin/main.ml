@@ -69,12 +69,15 @@ module Prompt = struct
     | _ -> Ok ()
 
   let validate_comments comments =
-    let comment_has_empty_lines =
-      String.trim comments |> String.split_on_char '\n' |> List.map String.trim |> List.mem ""
-    in
-    match comment_has_empty_lines with
-    | true -> Error "secrets cannot have empty lines in the middle of the comments"
-    | false -> Ok ()
+    match String.trim comments with
+    | "" ->
+      (* empty comments are allowed *)
+      Ok ()
+    | comments ->
+      let has_empty_lines = String.split_on_char '\n' comments |> List.map String.trim |> List.mem "" in
+      (match has_empty_lines with
+      | false -> Ok ()
+      | true -> Error "empty lines are not allowed in the middle of the comments")
 
   let rec input_and_validate_loop ~validate ?initial get_input =
     let remove_trailing_newlines s =
@@ -89,10 +92,11 @@ module Prompt = struct
           match s.[i] = '\n' with
           | true -> count_leading_newlines ~acc:(acc + 1) ~i:(i + 1) s
           | false -> i
-        with _ -> (* out of bounds edge case *) i - 1
+        with _ -> i
       in
       let trailing_newlines = count_leading_newlines rev_s in
-      String.sub s 0 (String.length s - trailing_newlines)
+      let new_length = String.length s - trailing_newlines in
+      if new_length <= 0 then "" else String.sub s 0 new_length
     in
     let%lwt input = get_input ?initial () in
     (* Remove bash commented lines from the secret and any trailing newlines *)
@@ -591,6 +595,57 @@ module Edit_who = struct
     in
     let info = Cmd.info "edit-who" ~doc in
     let term = main_run Term.(const edit_who_with_check $ Flags.secret_name) in
+    Cmd.v info term
+end
+
+module Edit_comments = struct
+  let edit_comments secret_name =
+    match Storage.Secrets.secret_exists secret_name with
+    | false -> Shell.die "E: no such secret: %s.  Use \"new\" or \"create\" for new secrets." (show_name secret_name)
+    | true ->
+      let path = path_of_secret_name secret_name in
+      Invariant.run_if_recipient ~op_string:"edit comments" ~path ~f:(fun () ->
+          let%lwt secret_plaintext = Storage.Secrets.decrypt_exn secret_name in
+          let parsed_secret = Secret.Validation.parse_exn secret_plaintext in
+          let get_comments_from_stdin () =
+            let%lwt new_comments = Lwt_io.read Lwt_io.stdin in
+            let new_comments = String.trim new_comments in
+            match Prompt.validate_comments new_comments with
+            | Error e -> Shell.die "E: %s" e
+            | _ -> Lwt.return new_comments
+          in
+          let get_comments_from_editor () =
+            let%lwt new_comments =
+              Prompt.input_and_validate_loop ~validate:Prompt.validate_comments ?initial:parsed_secret.comments
+                (Edit.new_text_from_editor ~name:(show_name secret_name))
+            in
+            let new_comments = Result.map String.trim new_comments in
+            match new_comments with
+            | Error e -> Shell.die "E: %s" e
+            | Ok new_comments -> Lwt.return new_comments
+          in
+          let%lwt new_comments =
+            match Prompt.is_TTY with
+            | false -> get_comments_from_stdin ()
+            | true -> get_comments_from_editor ()
+          in
+          match parsed_secret.comments, new_comments = "" with
+          | None, true -> Shell.die "I: comments unchanged"
+          | Some old, false when old = new_comments -> Shell.die "I: comments unchanged"
+          | _ ->
+            let updated_secret =
+              match parsed_secret.kind with
+              | Secret.Singleline -> Secret.singleline_from_text_description parsed_secret.text new_comments
+              | Secret.Multiline -> Secret.multiline_from_text_description parsed_secret.text new_comments
+            in
+            let secret_recipients = Storage.Secrets.get_recipients_from_path_exn path in
+            (try%lwt Edit.encrypt_with_retry ~plaintext:updated_secret ~secret_name secret_recipients
+             with exn -> Shell.die ~exn "E: encrypting %s failed" (show_name secret_name)))
+
+  let edit_comments_cmd =
+    let doc = "edit the comments of the specified secret" in
+    let info = Cmd.info "edit-comments" ~doc in
+    let term = main_run Term.(const edit_comments $ Flags.secret_name) in
     Cmd.v info term
 end
 
@@ -1470,6 +1525,7 @@ let () =
       Get.cat_cmd;
       Rm.delete;
       Edit_cmd.edit;
+      Edit_comments.edit_comments_cmd;
       Edit_who.edit_who;
       Get.get;
       Healthcheck.healthcheck;
