@@ -1,4 +1,16 @@
-## Unpublished
+## 0.1.7 (2025-09-15)
+- Add --comment flag to the create command
+- Add edit-comments command
+- Show recipients in "user is not recipient" error
+- Add add-who and rm-who commands
+- Add groups suggestions to recipients suggestions
+- Add `my` command
+- Add better handling of bad setup for get and ls
+- Improve error handling and message for missing setup
+- Better error message when passage isn't setup
+- Update Makefile
+- Improve README and run linting
+- Catch `realpath` error and raise friendlier exception
 - Update bash completions
 - Add zsh completions
 
