@@ -461,6 +461,10 @@ module Flags = struct
   let template_file =
     let doc = "the path of the template file" in
     Arg.(required & pos 0 (some Converters.file_arg) None & info [] ~doc ~docv:"TEMPLATE_FILE")
+
+  let comment =
+    let doc = "optional comment to add to the secret" in
+    Arg.(value & opt (some string) None & info [ "comment" ] ~docv:"COMMENT" ~doc)
 end
 
 module Add_who = struct
@@ -540,12 +544,32 @@ module Create = struct
       let%lwt () = Invariant.die_if_invariant_fails ~op_string:"create" (path_of_secret_name secret_name) in
       create_new_secret secret_name)
 
-  let create_new_secret_from_stdin secret_name =
+  let create_new_secret_from_stdin secret_name comment_opt =
     let create_new_secret secret_name =
       Edit.edit_secret secret_name ~self_fallback:true ~allow_retry:false ~get_updated_secret:(fun _ ->
           let open Prompt in
           let%lwt () = input_help_if_user_input () in
-          get_valid_input_from_stdin_exn ())
+          match%lwt get_valid_input_from_stdin_exn () with
+          | Error e -> Shell.die "E: %s" e
+          | Ok plaintext_secret ->
+            let parsed_secret = Secret.Validation.parse_exn plaintext_secret in
+            let comment =
+              match comment_opt, parsed_secret.comments with
+              | Some comment, None | None, Some comment -> comment
+              | None, None -> ""
+              | Some _, Some _ ->
+                Shell.die
+                  "E: secret text already contains comments. Either use the secret text with comments or use the \
+                   --comment flag."
+            in
+            (match validate_comments comment with
+            | Error e -> Shell.die "E: invalid comment format: %s" e
+            | Ok () ->
+              Lwt_result.return
+              @@
+              (match parsed_secret.kind with
+              | Secret.Singleline -> Secret.singleline_from_text_description parsed_secret.text comment
+              | Secret.Multiline -> Secret.multiline_from_text_description parsed_secret.text comment)))
     in
     invariant_create ~create_new_secret secret_name
 
@@ -555,7 +579,7 @@ module Create = struct
       tries to set them to the ones associated with \${PASSAGE_IDENTITY} |}
     in
     let info = Cmd.info "create" ~doc in
-    let term = main_run Term.(const create_new_secret_from_stdin $ Flags.secret_name) in
+    let term = main_run Term.(const create_new_secret_from_stdin $ Flags.secret_name $ Flags.comment) in
     Cmd.v info term
 end
 

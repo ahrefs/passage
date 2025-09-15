@@ -68,3 +68,29 @@ Should succeed - secrets created in directories with groups should be encrypted 
   another secret
   $ PASSAGE_IDENTITY=tommy.tom.key passage get 03/secret2
   another secret
+
+Should succeed - create single-line secret with comment using --comment flag
+  $ echo "mysecret" | passage create new/with-comment --comment "This is a test comment"
+  $ passage get new/with-comment
+  mysecret
+  $ passage cat new/with-comment
+  mysecret
+  
+  This is a test comment
+
+Should succeed - create multi-line secret with comment using --comment flag
+  $ printf "\n\nsecret line1\nsecret line2" | passage create new/multi-with-comment --comment "Multi-line secret comment"
+  $ passage get new/multi-with-comment
+  secret line1
+  secret line2
+  $ passage cat new/multi-with-comment
+  
+  Multi-line secret comment
+  
+  secret line1
+  secret line2
+
+Should fail - trying to create a secret with comments on the secret text and the --comment flag
+  $ echo "\ncomment\n\nsecret line 1\nsecret line 2" | passage create new/multi-comment --comment "Multi-line secret comment"
+  E: secret text already contains comments. Either use the secret text with comments or use the --comment flag.
+  [1]
