@@ -35,3 +35,13 @@ let with_secure_tmpfile suffix f =
     (fun secure_tmpdir ->
       let suffix = sprintf "-%s.txt" (Devkit.Stre.replace_all ~str:suffix ~sub:"/" ~by:"-") in
       Lwt_io.with_temp_file ~temp_dir:secure_tmpdir ~suffix ~perm:0o600 f)
+
+(* make sure they really meant to exit without saving. But this is going to mess
+ * up if an editor never cleanly exits. *)
+let rec edit_loop tmpfile =
+  let%lwt had_exception = try%lwt Lwt.map (fun () -> false) (Shell.editor tmpfile) with _ -> Lwt.return true in
+  if had_exception then (
+    match%lwt Prompt.yesno "Editor was exited without saving successfully, try again?" with
+    | true -> edit_loop tmpfile
+    | false -> Lwt.return false)
+  else Lwt.return true

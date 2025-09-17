@@ -5,6 +5,7 @@ open Display
 open Validation
 open Prompt
 open File_utils
+open Recipients
 
 module Exn = Devkit.Exn
 
@@ -42,31 +43,6 @@ module Encrypt = struct
 end
 
 module Edit = struct
-  let add_recipients_if_none_exists recipients secret_path =
-    match Storage.Secrets.no_keys_file (Path.dirname secret_path) with
-    | false -> Lwt.return_unit
-    | true ->
-      (* also adds root group by default for all new secrets *)
-      let root_recipients_names = Storage.Secrets.recipients_of_group_name ~map_fn:(fun x -> x) "@root" in
-      (* just a separator line before printing the added recipients *)
-      let%lwt () = eprintl "" in
-      let%lwt () = eprintlf "I: using recipient group @root for secret %s" (show_path secret_path) in
-      (* avoid repeating names if the user creating the secret is already in the root group *)
-      let%lwt recipients_names =
-        Lwt_list.filter_map_s
-          (fun r ->
-            match List.mem r.Age.name root_recipients_names with
-            | true -> Lwt.return_none
-            | false ->
-              let%lwt () = Lwt_io.eprintf "I: using recipient %s for secret %s\n" r.name (show_path secret_path) in
-              Lwt.return_some r.name)
-          recipients
-      in
-      let%lwt () = Lwt_io.(flush stderr) in
-      let recipients_names_with_root_group = "@root" :: (recipients_names |> List.sort String.compare) in
-      let recipients_file_path = Storage.Secrets.get_recipients_file_path secret_path in
-      let (_ : Path.t) = Path.ensure_parent recipients_file_path in
-      Lwt_io.lines_to_file (show_path recipients_file_path) (recipients_names_with_root_group |> Lwt_stream.of_list)
 
   let encrypt_with_retry ~plaintext ~secret_name recipients =
     let rec loop () =
@@ -133,89 +109,9 @@ If the secret is a staging secret, its only recipient should be @everyone.
     with Failure s -> Shell.die "%s" s
 
 
-  (* make sure they really meant to exit without saving. But this is going to mess
-   * up if an editor never cleanly exits. *)
-  let rec edit_loop tmpfile =
-    let%lwt had_exception = try%lwt Lwt.map (fun () -> false) (Shell.editor tmpfile) with _ -> Lwt.return true in
-    if had_exception then (
-      match%lwt yesno "Editor was exited without saving successfully, try again?" with
-      | true -> edit_loop tmpfile
-      | false -> Lwt.return false)
-    else Lwt.return true
 
-  let recipients_validation_once ~validate get_recipients =
-    let%lwt input = get_recipients () in
-    (* Parse recipients from input, filtering out comments and empty lines *)
-    let recipients_list =
-      String.split_on_char '\n' input
-      |> List.filter_map (fun line ->
-             let trimmed = String.trim line in
-             if trimmed = "" || String.starts_with ~prefix:"#" trimmed then None else Some trimmed)
-    in
-    match validate recipients_list with
-    | Error e -> if is_TTY = false then Shell.die "%s" e else Lwt.return_error e
-    | Ok () -> Lwt.return_ok recipients_list
 
-  let rewrite_recipients_file secret_name new_recipients_list =
-    let secret_path = path_of_secret_name secret_name in
-    let sorted_base_recipients = Storage.Secrets.get_recipients_names secret_path in
-    let secret_recipients_file = Storage.Secrets.get_recipients_file_path secret_path in
-    let (_ : Path.t) = Path.ensure_parent secret_recipients_file in
-    (* Deduplicate and sort recipients *)
-    let deduplicated_recipients = List.sort_uniq String.compare new_recipients_list in
-    let%lwt () = Lwt_io.lines_to_file (show_path secret_recipients_file) (Lwt_stream.of_list deduplicated_recipients) in
-    let sorted_updated_recipients_names = Storage.Secrets.get_recipients_names secret_path in
-    if sorted_base_recipients <> sorted_updated_recipients_names then (
-      let secrets_affected = Storage.Secrets.get_secrets_in_folder (Path.folder_of_path secret_path) in
-      (* it might be that we are creating a secret in a new folder and adding new recipients,
-         so we have no extra affected secrets. Only refresh if there are affected secrets *)
-      if secrets_affected <> [] then
-        Storage.Secrets.refresh ~force:true ~verbose:(!verbosity = Verbose) secrets_affected
-      else Lwt.return_unit)
-    else eprintl "I: no changes made to the recipients"
 
-  let edit_recipients secret_name =
-    let path_to_secret = path_of_secret_name secret_name in
-    let sorted_base_recipients =
-      try Storage.Secrets.get_recipients_names path_to_secret with exn -> Shell.die ~exn "E: failed to get recipients"
-    in
-    let recipients_groups, current_recipients_names = sorted_base_recipients |> List.partition Age.is_group_recipient in
-    let left, right, common =
-      List_utils.diff_intersect_lists current_recipients_names (Storage.Keys.all_recipient_names ())
-    in
-    let all_available_groups = Storage.Secrets.all_groups_names () |> List.map (fun g -> "@" ^ g) in
-    let unused_groups = List.filter (fun g -> not (List.mem g recipients_groups)) all_available_groups in
-    let recipient_lines =
-      (if recipients_groups = [] then [] else ("# Groups " :: recipients_groups) @ [ "" ])
-      @ ("# Recipients " :: common)
-      @ [ "" ]
-      @ (if left = [] then [] else "#" :: "# Warning, unknown recipients below this line " :: "#" :: left)
-      @ "#"
-        :: "# Uncomment recipients below to add them. You can also add valid groups names if you want."
-        :: "#"
-        ::
-        (if unused_groups = [] then []
-         else ("# Available groups:" :: List.map (fun g -> "# " ^ g) unused_groups) @ [ "#" ])
-      @ if right = [] then [] else "# Available users:" :: List.map (fun r -> "# " ^ r) right
-    in
-    with_secure_tmpfile (show_name secret_name) (fun (tmpfile, tmpfile_oc) ->
-        (* write and then close to make it available to the editor *)
-        let%lwt () = Lwt_list.iter_s (Lwt_io.write_line tmpfile_oc) recipient_lines in
-        let%lwt () = Lwt_io.close tmpfile_oc in
-        if%lwt edit_loop tmpfile then (
-          let rec validate_and_edit () =
-            let get_recipients_from_file () = Lwt_io.(with_file ~mode:Input tmpfile read) in
-            match%lwt recipients_validation_once ~validate:validate_recipients_for_editing get_recipients_from_file with
-            | Error e ->
-              let%lwt () = Lwt_io.printlf "\n%s" e in
-              if%lwt yesno "Edit again?" then (
-                let%lwt _ = edit_loop tmpfile in
-                validate_and_edit ())
-              else Shell.die "%s" e
-            | Ok new_recipients_list -> rewrite_recipients_file secret_name new_recipients_list
-          in
-          validate_and_edit ())
-        else verbose_eprintlf "E: no recipients provided")
 
   let new_text_from_editor ?(initial = "") ?(name = "new") () =
     with_secure_tmpfile name (fun (tmpfile, tmpfile_oc) ->
@@ -306,25 +202,6 @@ module Add_who = struct
     let doc = "the names of the recipients to add. Can be one or many" in
     Arg.(non_empty & pos_right 0 string [] & info [] ~docv:"RECIPIENT" ~doc)
 
-  let add_recipients_to_secret secret_name recipients_to_add =
-    let secret_path = path_of_secret_name secret_name in
-    match Storage.Secrets.secret_exists_at secret_path with
-    | false -> Shell.die "E: no such secret: %s" (show_name secret_name)
-    | true ->
-      Invariant.run_if_recipient ~op_string:"add recipients" ~path:secret_path ~f:(fun () ->
-          let%lwt () =
-            match validate_recipients_for_commands recipients_to_add with
-            | Error msg -> Shell.die "%s" msg
-            | Ok () -> Lwt.return_unit
-          in
-          let current_recipients = Storage.Secrets.get_recipients_names secret_path in
-          let new_recipients = List.sort_uniq String.compare (current_recipients @ recipients_to_add) in
-          if current_recipients = new_recipients then
-            eprintl "I: no changes made - all specified recipients are already present"
-          else (
-            let%lwt () = Edit.rewrite_recipients_file secret_name new_recipients in
-            let added_count = List.length new_recipients - List.length current_recipients in
-            eprintlf "I: added %d recipient%s" added_count (if added_count = 1 then "" else "s")))
 
   let add_who =
     let doc = "add recipients to the specified secret" in
@@ -338,30 +215,6 @@ module Rm_who = struct
     let doc = "the names of the recipients to remove. Can be one or many" in
     Arg.(non_empty & pos_right 0 string [] & info [] ~docv:"RECIPIENT" ~doc)
 
-  let remove_recipients_from_secret secret_name recipients_to_remove =
-    let secret_path = path_of_secret_name secret_name in
-    match Storage.Secrets.secret_exists_at secret_path with
-    | false -> Shell.die "E: no such secret: %s" (show_name secret_name)
-    | true ->
-      Invariant.run_if_recipient ~op_string:"remove recipients" ~path:secret_path ~f:(fun () ->
-          let current_recipients = Storage.Secrets.get_recipients_names secret_path in
-          let new_recipients = List.filter (fun r -> not (List.mem r recipients_to_remove)) current_recipients in
-          (* Check for non-existent recipients to warn about *)
-          let non_existent = List.filter (fun r -> not (List.mem r current_recipients)) recipients_to_remove in
-          if new_recipients = [] then Shell.die "E: cannot remove all recipients - at least one recipient must remain"
-          else if current_recipients = new_recipients then (
-            match non_existent with
-            | [] -> eprintl "I: no changes made - specified recipients were already absent"
-            | _ -> eprintlf "W: recipients not found: %s" (String.concat ", " non_existent))
-          else (
-            (* Show warnings for non-existent recipients before proceeding *)
-            let%lwt () =
-              if non_existent <> [] then eprintlf "W: recipients not found: %s" (String.concat ", " non_existent)
-              else Lwt.return_unit
-            in
-            let%lwt () = Edit.rewrite_recipients_file secret_name new_recipients in
-            let removed_count = List.length current_recipients - List.length new_recipients in
-            eprintlf "I: removed %d recipient%s" removed_count (if removed_count = 1 then "" else "s")))
 
   let rm_who =
     let doc = "remove recipients from the specified secret" in
@@ -443,7 +296,7 @@ module Edit_who = struct
     | false, false -> Shell.die "E: no such secret: %s" (show_name secret_name)
     | _, true | true, _ ->
       Invariant.run_if_recipient ~op_string:"edit recipients" ~path:(path_of_secret_name secret_name) ~f:(fun () ->
-          Edit.edit_recipients secret_name)
+          edit_recipients secret_name)
 
   let edit_who =
     let doc =
@@ -865,7 +718,7 @@ module New = struct
     let secret_path = path_of_secret_name secret_name in
     let original_recipients = Storage.Secrets.get_recipients_from_path_exn secret_path in
     Edit.show_recipients_notice_if_true (original_recipients = []);
-    if%lwt yesno "Edit recipients for this secret?" then Edit.edit_recipients secret_name
+    if%lwt yesno "Edit recipients for this secret?" then edit_recipients secret_name
 
   let create_new_secret' secret_name = Create.invariant_create ~create_new_secret secret_name
 
