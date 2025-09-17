@@ -6,6 +6,7 @@ open Validation
 open Prompt
 open File_utils
 open Recipients
+open Retry
 
 module Exn = Devkit.Exn
 
@@ -44,17 +45,6 @@ end
 
 module Edit = struct
 
-  let encrypt_with_retry ~plaintext ~secret_name recipients =
-    let rec loop () =
-      try%lwt Encrypt.encrypt_exn ~plaintext ~secret_name recipients
-      with exn ->
-        let%lwt () = eprintlf "Encryption failed: %s" (Exn.to_string exn) in
-        let%lwt () = Lwt_io.(flush stderr) in
-        (match%lwt yesno "Would you like to try again?" with
-        | false -> Shell.die "E: retry cancelled"
-        | true -> loop ())
-    in
-    loop ()
 
   let new_secret_recipients_notice =
     {|
@@ -349,7 +339,7 @@ module Edit_comments = struct
               | Secret.Multiline -> Secret.multiline_from_text_description parsed_secret.text new_comments
             in
             let secret_recipients = Storage.Secrets.get_recipients_from_path_exn path in
-            (try%lwt Edit.encrypt_with_retry ~plaintext:updated_secret ~secret_name secret_recipients
+            (try%lwt encrypt_with_retry ~plaintext:updated_secret ~secret_name secret_recipients
              with exn -> Shell.die ~exn "E: encrypting %s failed" (show_name secret_name)))
 
   let edit_comments_cmd =
