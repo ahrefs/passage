@@ -2,6 +2,9 @@ open Passage
 open Printf
 open Cmdliner
 open Display
+open Validation
+open Prompt
+open File_utils
 
 module Exn = Devkit.Exn
 
@@ -28,98 +31,6 @@ let verbose_eprintlf fmt =
 
 let main_run term = Term.(const Lwt_main.run $ term)
 
-module Prompt = struct
-  type prompt_reply =
-    | NoTTY
-    | TTY of bool
-
-  let is_TTY = Unix.isatty Unix.stdin
-
-  let yesno prompt =
-    let%lwt () = Lwt_io.printf "%s [y/N] " prompt in
-    let%lwt ans = Lwt_io.(read_line stdin) in
-    match ans with
-    | "Y" | "y" -> Lwt.return true
-    | _ -> Lwt.return false
-
-  let yesno_tty_check prompt =
-    match is_TTY with
-    | false -> Lwt.return NoTTY
-    | true ->
-      let%lwt () = Lwt_io.printf "%s [y/N] " prompt in
-      let%lwt ans = Lwt_io.(read_line stdin) in
-      (match ans with
-      | "Y" | "y" -> Lwt.return (TTY true)
-      | _ -> Lwt.return (TTY false))
-
-  let input_help_if_user_input ?(msg = "Please type the secret and then do Ctrl+d twice to terminate input") () =
-    match is_TTY with
-    | true -> Lwt_io.printl @@ sprintf "I: reading from stdin. %s" msg
-    | false -> Lwt.return_unit
-
-  let read_input_from_stdin ?initial:_ () = Lwt_io.(read stdin)
-
-  let validate_secret secret =
-    match Secret.Validation.validate secret with
-    | Error (e, _typ) -> Error e
-    | _ -> Ok ()
-
-  let validate_comments comments =
-    match String.trim comments with
-    | "" ->
-      (* empty comments are allowed *)
-      Ok ()
-    | comments ->
-      let has_empty_lines = String.split_on_char '\n' comments |> List.map String.trim |> List.mem "" in
-      (match has_empty_lines with
-      | false -> Ok ()
-      | true -> Error "empty lines are not allowed in the middle of the comments")
-
-  let rec input_and_validate_loop ~validate ?initial get_input =
-    let remove_trailing_newlines s =
-      (* reverse the string and count leading newlines instead of traversing the string
-         multiple times to remove trailing newlines *)
-      let rev_s =
-        let chars = List.of_seq (String.to_seq s) in
-        String.of_seq (List.to_seq (List.rev chars))
-      in
-      let rec count_leading_newlines ?(acc = 0) ?(i = 0) s =
-        try
-          match s.[i] = '\n' with
-          | true -> count_leading_newlines ~acc:(acc + 1) ~i:(i + 1) s
-          | false -> i
-        with _ -> i
-      in
-      let trailing_newlines = count_leading_newlines rev_s in
-      let new_length = String.length s - trailing_newlines in
-      if new_length <= 0 then "" else String.sub s 0 new_length
-    in
-    let%lwt input = get_input ?initial () in
-    (* Remove bash commented lines from the secret and any trailing newlines *)
-    let secret =
-      String.split_on_char '\n' input
-      |> List.filter (fun line -> not (String.starts_with ~prefix:"#" line))
-      |> String.concat "\n"
-      |> remove_trailing_newlines
-    in
-    match validate secret with
-    | Error e ->
-      if is_TTY = false then Shell.die "This secret is in an invalid format: %s" e
-      else (
-        let%lwt () = Lwt_io.printlf "\nThis secret is in an invalid format: %s" e in
-        if%lwt yesno "Edit again?" then input_and_validate_loop ~validate ~initial:input get_input
-        else Lwt.return_error e)
-    | _ -> Lwt.return_ok secret
-
-  (** Gets and validates user input reading from stdin. If the input has the wrong format, the user
-      is prompted to reinput the secret with the correct format. Allows passing in a function for input
-      transformation. Throws an error if the transformed input doesn't comply with the format and the
-      user doesn't want to fix the input format. *)
-  let get_valid_input_from_stdin_exn ?(validate = validate_secret) () =
-    match%lwt input_and_validate_loop ~validate read_input_from_stdin with
-    | Error e -> Shell.die "This secret is in an invalid format: %s" e
-    | Ok secret -> Lwt.return_ok secret
-end
 
 module Encrypt = struct
   let encrypt_exn ~plaintext ~secret_name recipients =
@@ -163,7 +74,7 @@ module Edit = struct
       with exn ->
         let%lwt () = eprintlf "Encryption failed: %s" (Exn.to_string exn) in
         let%lwt () = Lwt_io.(flush stderr) in
-        (match%lwt Prompt.yesno "Would you like to try again?" with
+        (match%lwt yesno "Would you like to try again?" with
         | false -> Shell.die "E: retry cancelled"
         | true -> loop ())
     in
@@ -221,73 +132,16 @@ If the secret is a staging secret, its only recipient should be @everyone.
              with exn -> Exn.fail ~exn "E: encrypting %s failed" raw_secret_name))
     with Failure s -> Shell.die "%s" s
 
-  let shm_check =
-    lazy
-      (let shm_dir = Path.inject "/dev/shm" in
-       let has_sufficient_perms =
-         try
-           Path.access shm_dir [ F_OK; W_OK; X_OK ];
-           true
-         with Unix.Unix_error _ -> false
-       in
-       let%lwt parent =
-         match Path.is_directory shm_dir && has_sufficient_perms with
-         | true -> Lwt.return_some shm_dir
-         | false ->
-           (match%lwt
-              Prompt.yesno
-                {|Your system does not have /dev/shm, which means that it may
-be difficult to entirely erase the temporary non-encrypted
-password file after editing.
-
-Are you sure you would like to continue?|}
-            with
-           | false -> exit 1
-           | true -> Lwt.return_none)
-       in
-       Lwt.return parent)
-
-  let with_secure_tmpfile suffix f =
-    let program = Filename.basename Sys.executable_name in
-    let%lwt parent = Lazy.force shm_check in
-    Lwt_io.with_temp_dir ~perm:0o700 ?parent:(Option.map show_path parent) ~prefix:(sprintf "%s." program)
-      (fun secure_tmpdir ->
-        let suffix = sprintf "-%s.txt" (Devkit.Stre.replace_all ~str:suffix ~sub:"/" ~by:"-") in
-        Lwt_io.with_temp_file ~temp_dir:secure_tmpdir ~suffix ~perm:0o600 f)
 
   (* make sure they really meant to exit without saving. But this is going to mess
    * up if an editor never cleanly exits. *)
   let rec edit_loop tmpfile =
     let%lwt had_exception = try%lwt Lwt.map (fun () -> false) (Shell.editor tmpfile) with _ -> Lwt.return true in
     if had_exception then (
-      match%lwt Prompt.yesno "Editor was exited without saving successfully, try again?" with
+      match%lwt yesno "Editor was exited without saving successfully, try again?" with
       | true -> edit_loop tmpfile
       | false -> Lwt.return false)
     else Lwt.return true
-
-  let validate_recipients ?(groups_only = false) recipients_list =
-    let all_recipient_names = Storage.Keys.all_recipient_names () in
-    let all_group_names = Storage.Secrets.all_groups_names () |> List.map (fun g -> "@" ^ g) in
-    let valid_names = all_recipient_names @ all_group_names @ [ "@everyone" ] in
-    let invalid_recipients =
-      List.filter
-        (fun name ->
-          let is_invalid = not (List.mem name valid_names) in
-          if groups_only then String.starts_with ~prefix:"@" name && is_invalid else is_invalid)
-        recipients_list
-    in
-    match invalid_recipients with
-    | [] -> Ok ()
-    | invalid_recipients' ->
-      let error_msg =
-        match invalid_recipients' with
-        | [ r ] -> sprintf "Invalid recipient: %s does not exist" r
-        | _ -> sprintf "Invalid recipients: %s do not exist" (String.concat ", " invalid_recipients')
-      in
-      Error error_msg
-
-  let validate_recipients_for_editing = validate_recipients ~groups_only:true
-  let validate_recipients_for_commands = validate_recipients ~groups_only:false
 
   let recipients_validation_once ~validate get_recipients =
     let%lwt input = get_recipients () in
@@ -299,7 +153,7 @@ Are you sure you would like to continue?|}
              if trimmed = "" || String.starts_with ~prefix:"#" trimmed then None else Some trimmed)
     in
     match validate recipients_list with
-    | Error e -> if Prompt.is_TTY = false then Shell.die "%s" e else Lwt.return_error e
+    | Error e -> if is_TTY = false then Shell.die "%s" e else Lwt.return_error e
     | Ok () -> Lwt.return_ok recipients_list
 
   let rewrite_recipients_file secret_name new_recipients_list =
@@ -354,7 +208,7 @@ Are you sure you would like to continue?|}
             match%lwt recipients_validation_once ~validate:validate_recipients_for_editing get_recipients_from_file with
             | Error e ->
               let%lwt () = Lwt_io.printlf "\n%s" e in
-              if%lwt Prompt.yesno "Edit again?" then (
+              if%lwt yesno "Edit again?" then (
                 let%lwt _ = edit_loop tmpfile in
                 validate_and_edit ())
               else Shell.die "%s" e
@@ -459,7 +313,7 @@ module Add_who = struct
     | true ->
       Invariant.run_if_recipient ~op_string:"add recipients" ~path:secret_path ~f:(fun () ->
           let%lwt () =
-            match Edit.validate_recipients_for_commands recipients_to_add with
+            match validate_recipients_for_commands recipients_to_add with
             | Error msg -> Shell.die "%s" msg
             | Ok () -> Lwt.return_unit
           in
@@ -527,7 +381,6 @@ module Create = struct
   let create_new_secret_from_stdin secret_name comment_opt =
     let create_new_secret secret_name =
       Edit.edit_secret secret_name ~self_fallback:true ~allow_retry:false ~get_updated_secret:(fun _ ->
-          let open Prompt in
           let%lwt () = input_help_if_user_input () in
           match%lwt get_valid_input_from_stdin_exn () with
           | Error e -> Shell.die "E: %s" e
@@ -570,8 +423,8 @@ module Edit_cmd = struct
     | true ->
       Invariant.run_if_recipient ~op_string:"edit secret" ~path:(path_of_secret_name secret_name) ~f:(fun () ->
           Edit.edit_secret secret_name ~allow_retry:true ~get_updated_secret:(fun initial ->
-              Prompt.input_and_validate_loop
-                ~validate:Prompt.validate_secret
+              input_and_validate_loop
+                ~validate:validate_secret
                   (* when we are editing a secret, we know `initial` is Some and we add the format explainer to it *)
                 ?initial:(Option.map (fun i -> i ^ Secret.format_explainer) initial)
                 (Edit.new_text_from_editor ~name:(show_name secret_name))))
@@ -614,13 +467,13 @@ module Edit_comments = struct
           let get_comments_from_stdin () =
             let%lwt new_comments = Lwt_io.read Lwt_io.stdin in
             let new_comments = String.trim new_comments in
-            match Prompt.validate_comments new_comments with
+            match validate_comments new_comments with
             | Error e -> Shell.die "E: %s" e
             | _ -> Lwt.return new_comments
           in
           let get_comments_from_editor () =
             let%lwt new_comments =
-              Prompt.input_and_validate_loop ~validate:Prompt.validate_comments ?initial:parsed_secret.comments
+              input_and_validate_loop ~validate:validate_comments ?initial:parsed_secret.comments
                 (Edit.new_text_from_editor ~name:(show_name secret_name))
             in
             let new_comments = Result.map String.trim new_comments in
@@ -629,7 +482,7 @@ module Edit_comments = struct
             | Ok new_comments -> Lwt.return new_comments
           in
           let%lwt new_comments =
-            match Prompt.is_TTY with
+            match is_TTY with
             | false -> get_comments_from_stdin ()
             | true -> get_comments_from_editor ()
           in
@@ -950,7 +803,7 @@ The location of these can be overriden using environment variables. Please check
 
 What should be the name used for your recipient identity?|}
       in
-      let%lwt user_name = Prompt.read_input_from_stdin () in
+      let%lwt user_name = read_input_from_stdin () in
       let user_name =
         String.trim user_name
         |> ExtString.String.replace_chars (fun c ->
@@ -1005,14 +858,14 @@ module New = struct
   let create_new_secret secret_name =
     let%lwt () =
       Edit.edit_secret ~self_fallback:true secret_name ~allow_retry:true ~get_updated_secret:(fun initial ->
-          Prompt.input_and_validate_loop ~validate:Prompt.validate_secret
+          input_and_validate_loop ~validate:validate_secret
             ~initial:(Option.value ~default:Secret.format_explainer initial)
             (Edit.new_text_from_editor ~name:(show_name secret_name)))
     in
     let secret_path = path_of_secret_name secret_name in
     let original_recipients = Storage.Secrets.get_recipients_from_path_exn secret_path in
     Edit.show_recipients_notice_if_true (original_recipients = []);
-    if%lwt Prompt.yesno "Edit recipients for this secret?" then Edit.edit_recipients secret_name
+    if%lwt yesno "Edit recipients for this secret?" then Edit.edit_recipients secret_name
 
   let create_new_secret' secret_name = Create.invariant_create ~create_new_secret secret_name
 
@@ -1081,10 +934,10 @@ module Replace = struct
         (show_name secret_name)
     | _ ->
       Invariant.run_if_recipient ~op_string:"replace secret" ~path:(path_of_secret_name secret_name) ~f:(fun () ->
-          let%lwt () = Prompt.input_help_if_user_input () in
+          let%lwt () = input_help_if_user_input () in
           (* We don't need to run validation for the input here since we will be replacing only the secret
               and not the whole file *)
-          let%lwt new_secret_plaintext = Prompt.read_input_from_stdin () in
+          let%lwt new_secret_plaintext = read_input_from_stdin () in
           if new_secret_plaintext = "" then Shell.die "E: invalid input, empty secrets are not allowed.";
           let is_singleline_secret =
             (* New secret is single line if doesn't have a newline character or if it has only one,
@@ -1163,24 +1016,24 @@ module Replace_comments = struct
               in
               let get_comments_from_stdin () =
                 let%lwt () =
-                  Prompt.input_help_if_user_input
+                  input_help_if_user_input
                     ~msg:"Please type the new comments and then do Ctrl+d twice to terminate input" ()
                 in
-                let%lwt new_comments = Prompt.read_input_from_stdin () in
-                match Prompt.validate_comments new_comments with
+                let%lwt new_comments = read_input_from_stdin () in
+                match validate_comments new_comments with
                 | Error e -> Shell.die "The comments are in an invalid format: %s" e
                 | _ -> Lwt.return new_comments
               in
               let get_comments_from_editor () =
                 match%lwt
-                  Prompt.input_and_validate_loop ~validate:Prompt.validate_comments ?initial:original_secret.comments
+                  input_and_validate_loop ~validate:validate_comments ?initial:original_secret.comments
                     (Edit.new_text_from_editor ~name:(show_name secret_name))
                 with
                 | Error e -> Shell.die "The comments are in an invalid format: %s" e
                 | Ok secret -> Lwt.return secret
               in
               let%lwt new_comments =
-                match Prompt.is_TTY with
+                match is_TTY with
                 | false -> get_comments_from_stdin ()
                 | true -> get_comments_from_editor ()
               in
@@ -1217,7 +1070,7 @@ module Rm = struct
           let%lwt rm_result =
             if force then Storage.Secrets.rm ~is_directory path
             else (
-              match%lwt Prompt.yesno_tty_check (sprintf "Are you sure you want to delete %s?" string_path) with
+              match%lwt yesno_tty_check (sprintf "Are you sure you want to delete %s?" string_path) with
               | NoTTY | TTY true -> Storage.Secrets.rm ~is_directory path
               | TTY false -> Lwt.return Storage.Secrets.Skipped)
           in
