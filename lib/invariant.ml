@@ -7,11 +7,10 @@ let get_expanded_recipient_names_from_folder path =
   with _ -> []
 
 let error_not_recipient ~op_string path =
-  let show_path p = Path.project p in
   let base_folder = Path.folder_of_path path in
   let%lwt () =
     Lwt_io.eprintlf "E: user is not a recipient of %s. Please ask one of the following to add you as a recipient:"
-      (show_path base_folder)
+      (Display.show_path base_folder)
   in
   let expanded_recipients = get_expanded_recipient_names_from_folder base_folder in
   let%lwt () = Lwt_list.iter_s (Lwt_io.eprintlf "  %s") expanded_recipients in
@@ -37,8 +36,6 @@ let die_if_invariant_fails ~op_string path =
   if (not (Path.is_directory full_path)) || FileUtil.ls (Path.project full_path) = [] then Lwt.return_unit
   else (
     (* check if i am listed on the .keys file, return early *)
-    let show_path p = Path.project p in
-    let show_name name = Storage.Secret_name.project name in
     let base_folder = Path.folder_of_path path in
     match%lwt user_is_listed_as_recipient path with
     | false -> error_not_recipient ~op_string path
@@ -55,7 +52,7 @@ let die_if_invariant_fails ~op_string path =
                 Lwt_io.eprintlf
                   "E: user is recipient of %s, but failed to decrypt %s. Please ask some user to refresh the whole \
                    folder."
-                  (show_path base_folder) (show_name s)
+                  (Display.show_path base_folder) (Display.show_name s)
               in
               Lwt.return true)
           (get_secrets_in_folder base_folder)

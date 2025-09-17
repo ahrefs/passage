@@ -1,6 +1,7 @@
 open Passage
 open Printf
 open Cmdliner
+open Display
 
 module Exn = Devkit.Exn
 
@@ -24,11 +25,6 @@ let verbose_eprintlf fmt =
       | Verbose -> eprintl msg
       | Normal -> Lwt.return_unit)
     fmt
-
-let show_path p = Path.project p
-let show_name name = Storage.Secret_name.project name
-let path_of_secret_name name = show_name name |> Path.inject
-let secret_name_of_path path = show_path path |> Storage.Secrets.build_secret_name
 
 let main_run term = Term.(const Lwt_main.run $ term)
 
@@ -225,24 +221,6 @@ If the secret is a staging secret, its only recipient should be @everyone.
              with exn -> Exn.fail ~exn "E: encrypting %s failed" raw_secret_name))
     with Failure s -> Shell.die "%s" s
 
-  (** takes two sorted lists and returns three lists:
-      first is items unique to l1, second is items unique to l2, third is items in both l1 and l2.
-
-      Preserves the order in the outputs *)
-  let diff_intersect_lists l1 r1 =
-    let rec diff accl accr accb left right =
-      match left, right with
-      | [], [] -> List.rev accl, List.rev accr, List.rev accb
-      | [], rh :: rt -> diff accl (rh :: accr) accb [] rt
-      | lh :: lt, [] -> diff (lh :: accl) accr accb lt []
-      | lh :: lt, rh :: rt ->
-        let comp = compare lh rh in
-        if comp < 0 then diff (lh :: accl) accr accb lt right
-        else if comp > 0 then diff accl (rh :: accr) accb left rt
-        else diff accl accr (lh :: accb) lt rt
-    in
-    diff [] [] [] l1 r1
-
   let shm_check =
     lazy
       (let shm_dir = Path.inject "/dev/shm" in
@@ -348,7 +326,9 @@ Are you sure you would like to continue?|}
       try Storage.Secrets.get_recipients_names path_to_secret with exn -> Shell.die ~exn "E: failed to get recipients"
     in
     let recipients_groups, current_recipients_names = sorted_base_recipients |> List.partition Age.is_group_recipient in
-    let left, right, common = diff_intersect_lists current_recipients_names (Storage.Keys.all_recipient_names ()) in
+    let left, right, common =
+      List_utils.diff_intersect_lists current_recipients_names (Storage.Keys.all_recipient_names ())
+    in
     let all_available_groups = Storage.Secrets.all_groups_names () |> List.map (fun g -> "@" ^ g) in
     let unused_groups = List.filter (fun g -> not (List.mem g recipients_groups)) all_available_groups in
     let recipient_lines =
