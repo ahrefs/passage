@@ -68,7 +68,8 @@ let rewrite_recipients_file secret_name new_recipients_list =
 let edit_recipients secret_name =
   let path_to_secret = Display.path_of_secret_name secret_name in
   let sorted_base_recipients =
-    try Storage.Secrets.get_recipients_names path_to_secret with exn -> Shell.die ~exn "E: failed to get recipients"
+    try Storage.Secrets.get_recipients_names path_to_secret
+    with exn -> Secret_helpers.die_failed_get_recipients ~exn ""
   in
   let recipients_groups, current_recipients_names = sorted_base_recipients |> List.partition Age.is_group_recipient in
   let left, right, common =
@@ -112,48 +113,44 @@ let edit_recipients secret_name =
 
 let add_recipients_to_secret secret_name recipients_to_add =
   let secret_path = Display.path_of_secret_name secret_name in
-  match Storage.Secrets.secret_exists_at secret_path with
-  | false -> Shell.die "E: no such secret: %s" (Display.show_name secret_name)
-  | true ->
-    Invariant.run_if_recipient ~op_string:"add recipients" ~path:secret_path ~f:(fun () ->
-        let%lwt () =
-          match Validation.validate_recipients_for_commands recipients_to_add with
-          | Error msg -> Shell.die "%s" msg
-          | Ok () -> Lwt.return_unit
-        in
-        let current_recipients = Storage.Secrets.get_recipients_names secret_path in
-        let new_recipients = List.sort_uniq String.compare (current_recipients @ recipients_to_add) in
-        if current_recipients = new_recipients then
-          eprintl "I: no changes made - all specified recipients are already present"
-        else (
-          let%lwt () = rewrite_recipients_file secret_name new_recipients in
-          let added_count = List.length new_recipients - List.length current_recipients in
-          eprintlf "I: added %d recipient%s" added_count (if added_count = 1 then "" else "s")))
+  Secret_helpers.check_path_exists_or_die secret_name secret_path;
+  Invariant.run_if_recipient ~op_string:"add recipients" ~path:secret_path ~f:(fun () ->
+      let%lwt () =
+        match Validation.validate_recipients_for_commands recipients_to_add with
+        | Error msg -> Shell.die "%s" msg
+        | Ok () -> Lwt.return_unit
+      in
+      let current_recipients = Storage.Secrets.get_recipients_names secret_path in
+      let new_recipients = List.sort_uniq String.compare (current_recipients @ recipients_to_add) in
+      if current_recipients = new_recipients then
+        eprintl "I: no changes made - all specified recipients are already present"
+      else (
+        let%lwt () = rewrite_recipients_file secret_name new_recipients in
+        let added_count = List.length new_recipients - List.length current_recipients in
+        eprintlf "I: added %d recipient%s" added_count (if added_count = 1 then "" else "s")))
 
 let remove_recipients_from_secret secret_name recipients_to_remove =
   let secret_path = Display.path_of_secret_name secret_name in
-  match Storage.Secrets.secret_exists_at secret_path with
-  | false -> Shell.die "E: no such secret: %s" (Display.show_name secret_name)
-  | true ->
-    Invariant.run_if_recipient ~op_string:"remove recipients" ~path:secret_path ~f:(fun () ->
-        let current_recipients = Storage.Secrets.get_recipients_names secret_path in
-        let new_recipients = List.filter (fun r -> not (List.mem r recipients_to_remove)) current_recipients in
-        (* Check for non-existent recipients to warn about *)
-        let non_existent = List.filter (fun r -> not (List.mem r current_recipients)) recipients_to_remove in
-        if new_recipients = [] then Shell.die "E: cannot remove all recipients - at least one recipient must remain"
-        else if current_recipients = new_recipients then (
-          match non_existent with
-          | [] -> eprintl "I: no changes made - specified recipients were already absent"
-          | _ -> eprintlf "W: recipients not found: %s" (String.concat ", " non_existent))
-        else (
-          (* Show warnings for non-existent recipients before proceeding *)
-          let%lwt () =
-            if non_existent <> [] then eprintlf "W: recipients not found: %s" (String.concat ", " non_existent)
-            else Lwt.return_unit
-          in
-          let%lwt () = rewrite_recipients_file secret_name new_recipients in
-          let removed_count = List.length current_recipients - List.length new_recipients in
-          eprintlf "I: removed %d recipient%s" removed_count (if removed_count = 1 then "" else "s")))
+  Secret_helpers.check_path_exists_or_die secret_name secret_path;
+  Invariant.run_if_recipient ~op_string:"remove recipients" ~path:secret_path ~f:(fun () ->
+      let current_recipients = Storage.Secrets.get_recipients_names secret_path in
+      let new_recipients = List.filter (fun r -> not (List.mem r recipients_to_remove)) current_recipients in
+      (* Check for non-existent recipients to warn about *)
+      let non_existent = List.filter (fun r -> not (List.mem r current_recipients)) recipients_to_remove in
+      if new_recipients = [] then Shell.die "E: cannot remove all recipients - at least one recipient must remain"
+      else if current_recipients = new_recipients then (
+        match non_existent with
+        | [] -> eprintl "I: no changes made - specified recipients were already absent"
+        | _ -> eprintlf "W: recipients not found: %s" (String.concat ", " non_existent))
+      else (
+        (* Show warnings for non-existent recipients before proceeding *)
+        let%lwt () =
+          if non_existent <> [] then eprintlf "W: recipients not found: %s" (String.concat ", " non_existent)
+          else Lwt.return_unit
+        in
+        let%lwt () = rewrite_recipients_file secret_name new_recipients in
+        let removed_count = List.length current_recipients - List.length new_recipients in
+        eprintlf "I: removed %d recipient%s" removed_count (if removed_count = 1 then "" else "s")))
 
 let list_recipient_secrets ?(verbose = false) recipients_names =
   if recipients_names = [] then Shell.die "E: Must specify at least one recipient name";
@@ -178,7 +175,7 @@ let list_recipient_secrets ?(verbose = false) recipients_names =
           | false -> Lwt_io.printl (Display.show_name secret)
           | true ->
             (try%lwt
-               let%lwt plaintext = Storage.Secrets.decrypt_exn ~silence_stderr:true secret in
+               let%lwt plaintext = Secret_helpers.decrypt_silently secret in
                Lwt_io.printl @@ Secret.Validation.validity_to_string (Display.show_name secret) plaintext
              with _ -> Lwt_io.printlf "🚨 %s [ WARNING: failed to decrypt ]" (Display.show_name secret))
         in
@@ -208,12 +205,12 @@ let list_recipients path expand_groups =
   match expand_groups with
   | true ->
     (match Storage.Secrets.get_recipients_from_path_exn path with
-    | exception exn -> Shell.die ~exn "E: failed to get recipients"
-    | [] -> Shell.die "E: no recipients found for %s" (Display.show_path path)
+    | exception exn -> Secret_helpers.die_failed_get_recipients ~exn ""
+    | [] -> Secret_helpers.die_no_recipients_found path
     | recipients -> print_from_recipient_list recipients)
   | false ->
   match Storage.Secrets.get_recipients_names path with
-  | [] -> Shell.die "E: no recipients found for %s" (Display.show_path path)
+  | [] -> Secret_helpers.die_no_recipients_found path
   | recipients_names ->
     List.iter
       (fun recipient_name ->
