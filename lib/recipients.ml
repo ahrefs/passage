@@ -19,7 +19,9 @@ let add_recipients_if_none_exists recipients secret_path =
           match List.mem r.Age.name root_recipients_names with
           | true -> Lwt.return_none
           | false ->
-            let%lwt () = Lwt_io.eprintf "I: using recipient %s for secret %s\n" r.name (Display.show_path secret_path) in
+            let%lwt () =
+              Lwt_io.eprintf "I: using recipient %s for secret %s\n" r.name (Display.show_path secret_path)
+            in
             Lwt.return_some r.name)
         recipients
     in
@@ -27,7 +29,9 @@ let add_recipients_if_none_exists recipients secret_path =
     let recipients_names_with_root_group = "@root" :: (recipients_names |> List.sort String.compare) in
     let recipients_file_path = Storage.Secrets.get_recipients_file_path secret_path in
     let (_ : Path.t) = Path.ensure_parent recipients_file_path in
-    Lwt_io.lines_to_file (Display.show_path recipients_file_path) (recipients_names_with_root_group |> Lwt_stream.of_list)
+    Lwt_io.lines_to_file
+      (Display.show_path recipients_file_path)
+      (recipients_names_with_root_group |> Lwt_stream.of_list)
 
 let recipients_validation_once ~validate get_recipients =
   let%lwt input = get_recipients () in
@@ -49,14 +53,15 @@ let rewrite_recipients_file secret_name new_recipients_list =
   let (_ : Path.t) = Path.ensure_parent secret_recipients_file in
   (* Deduplicate and sort recipients *)
   let deduplicated_recipients = List.sort_uniq String.compare new_recipients_list in
-  let%lwt () = Lwt_io.lines_to_file (Display.show_path secret_recipients_file) (Lwt_stream.of_list deduplicated_recipients) in
+  let%lwt () =
+    Lwt_io.lines_to_file (Display.show_path secret_recipients_file) (Lwt_stream.of_list deduplicated_recipients)
+  in
   let sorted_updated_recipients_names = Storage.Secrets.get_recipients_names secret_path in
   if sorted_base_recipients <> sorted_updated_recipients_names then (
     let secrets_affected = Storage.Secrets.get_secrets_in_folder (Path.folder_of_path secret_path) in
     (* it might be that we are creating a secret in a new folder and adding new recipients,
        so we have no extra affected secrets. Only refresh if there are affected secrets *)
-    if secrets_affected <> [] then
-      Storage.Secrets.refresh ~force:true ~verbose:false secrets_affected
+    if secrets_affected <> [] then Storage.Secrets.refresh ~force:true ~verbose:false secrets_affected
     else Lwt.return_unit)
   else eprintl "I: no changes made to the recipients"
 
@@ -91,7 +96,9 @@ let edit_recipients secret_name =
       if%lwt File_utils.edit_loop tmpfile then (
         let rec validate_and_edit () =
           let get_recipients_from_file () = Lwt_io.(with_file ~mode:Input tmpfile read) in
-          match%lwt recipients_validation_once ~validate:Validation.validate_recipients_for_editing get_recipients_from_file with
+          match%lwt
+            recipients_validation_once ~validate:Validation.validate_recipients_for_editing get_recipients_from_file
+          with
           | Error e ->
             let%lwt () = Lwt_io.printlf "\n%s" e in
             if%lwt Prompt.yesno "Edit again?" then (
@@ -148,7 +155,7 @@ let remove_recipients_from_secret secret_name recipients_to_remove =
           let removed_count = List.length current_recipients - List.length new_recipients in
           eprintlf "I: removed %d recipient%s" removed_count (if removed_count = 1 then "" else "s")))
 
-let list_recipient_secrets recipients_names verbosity =
+let list_recipient_secrets ?(verbose = false) recipients_names =
   if recipients_names = [] then Shell.die "E: Must specify at least one recipient name";
   let number_of_recipients = List.length recipients_names in
   let all_recipient_names = Storage.Keys.all_recipient_names () in
@@ -167,9 +174,9 @@ let list_recipient_secrets recipients_names verbosity =
         in
         let sorted = List.sort Secret_name.compare secrets in
         let print_secret secret =
-          match verbosity with
-          | `Normal -> Lwt_io.printl (Display.show_name secret)
-          | `Verbose ->
+          match verbose with
+          | false -> Lwt_io.printl (Display.show_name secret)
+          | true ->
             (try%lwt
                let%lwt plaintext = Storage.Secrets.decrypt_exn ~silence_stderr:true secret in
                Lwt_io.printl @@ Secret.Validation.validity_to_string (Display.show_name secret) plaintext

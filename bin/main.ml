@@ -15,37 +15,24 @@ type output_mode =
   | QrCode
   | Stdout
 
-type verbosity =
-  | Normal
-  | Verbose
-
-let verbosity = ref Normal
 let eprintl = Lwt_io.eprintl
 let eprintlf = Lwt_io.eprintlf
 
-let verbose_eprintlf fmt =
-  ksprintf
-    (fun msg ->
-      match !verbosity with
-      | Verbose -> eprintl msg
-      | Normal -> Lwt.return_unit)
-    fmt
+let verbose_eprintlf ?(verbose = false) fmt =
+  if verbose then ksprintf eprintl fmt else ksprintf (fun _ -> Lwt.return_unit) fmt
 
 let main_run term = Term.(const Lwt_main.run $ term)
 
-
 module Encrypt = struct
-  let encrypt_exn ~plaintext ~secret_name recipients =
+  let encrypt_exn ?(verbose = false) ~plaintext ~secret_name recipients =
     let%lwt () =
-      verbose_eprintlf "I: encrypting %s for %s" (show_name secret_name)
+      verbose_eprintlf ~verbose "I: encrypting %s for %s" (show_name secret_name)
         (List.map (fun r -> Age.(r.name)) recipients |> String.concat ", ")
     in
     Storage.Secrets.encrypt_exn ~plaintext ~secret_name recipients
 end
 
 module Edit = struct
-
-
   let new_secret_recipients_notice =
     {|
 If you are adding a new secret in a new folder, please keep recipients to a minimum and include the following:
@@ -60,7 +47,7 @@ If the secret is a staging secret, its only recipient should be @everyone.
 
   let show_recipients_notice_if_true cond = if cond then prerr_endline new_secret_recipients_notice
 
-  let edit_secret ?(self_fallback = false) secret_name ~allow_retry ~get_updated_secret =
+  let edit_secret ?(self_fallback = false) ?(verbose = false) secret_name ~allow_retry ~get_updated_secret =
     let raw_secret_name = show_name secret_name in
     let%lwt original_secret =
       match Storage.Secrets.secret_exists secret_name with
@@ -94,25 +81,9 @@ If the secret is a staging secret, its only recipient should be @everyone.
           | false ->
             (try%lwt
                show_recipients_notice_if_true is_first_secret_in_new_folder;
-               Encrypt.encrypt_exn ~plaintext:updated_secret ~secret_name secret_recipients
+               Encrypt.encrypt_exn ~verbose ~plaintext:updated_secret ~secret_name secret_recipients
              with exn -> Exn.fail ~exn "E: encrypting %s failed" raw_secret_name))
     with Failure s -> Shell.die "%s" s
-
-
-
-
-
-
-  let new_text_from_editor ?(initial = "") ?(name = "new") () =
-    with_secure_tmpfile name (fun (tmpfile, tmpfile_oc) ->
-        let%lwt () =
-          if initial <> "" then (
-            let%lwt () = Lwt_io.write tmpfile_oc initial in
-            Lwt_io.close tmpfile_oc)
-          else Lwt.return_unit
-        in
-        let%lwt () = Shell.editor tmpfile in
-        Lwt_io.(with_file ~mode:Input tmpfile read))
 end
 
 module Converters = struct
@@ -172,11 +143,9 @@ module Flags = struct
     let doc = "list of relative $(docv)s from the secrets directory that will be used to process secrets" in
     Arg.(value & pos_all Converters.path_arg [ Path.inject "." ] & info [] ~docv:"PATH" ~doc)
 
-  let set_verbosity =
+  let verbose =
     let doc = "print verbose output during execution" in
-    let verbose = Verbose, Arg.info [ "v"; "verbose" ] ~doc in
-    let verbosity_term = Arg.(value & vflag Normal [ verbose ]) in
-    Term.(const (fun v -> verbosity := v) $ verbosity_term)
+    Arg.(value & flag & info [ "v"; "verbose" ] ~doc)
 
   let template_file =
     let doc = "the path of the template file" in
@@ -192,7 +161,6 @@ module Add_who = struct
     let doc = "the names of the recipients to add. Can be one or many" in
     Arg.(non_empty & pos_right 0 string [] & info [] ~docv:"RECIPIENT" ~doc)
 
-
   let add_who =
     let doc = "add recipients to the specified secret" in
     let info = Cmd.info "add-who" ~doc in
@@ -205,7 +173,6 @@ module Rm_who = struct
     let doc = "the names of the recipients to remove. Can be one or many" in
     Arg.(non_empty & pos_right 0 string [] & info [] ~docv:"RECIPIENT" ~doc)
 
-
   let rm_who =
     let doc = "remove recipients from the specified secret" in
     let info = Cmd.info "rm-who" ~doc in
@@ -214,16 +181,16 @@ module Rm_who = struct
 end
 
 module Create = struct
-  let invariant_create ~create_new_secret secret_name =
+  let invariant_create ~verbose ~create_new_secret secret_name =
     if Storage.Secrets.secret_exists secret_name then
       Shell.die "E: refusing to create: a secret by that name already exists"
     else (
       let%lwt () = Invariant.die_if_invariant_fails ~op_string:"create" (path_of_secret_name secret_name) in
-      create_new_secret secret_name)
+      create_new_secret verbose secret_name)
 
-  let create_new_secret_from_stdin secret_name comment_opt =
-    let create_new_secret secret_name =
-      Edit.edit_secret secret_name ~self_fallback:true ~allow_retry:false ~get_updated_secret:(fun _ ->
+  let create_new_secret_from_stdin verbose secret_name comment_opt =
+    let create_new_secret verbose secret_name =
+      Edit.edit_secret secret_name ~verbose ~self_fallback:true ~allow_retry:false ~get_updated_secret:(fun _ ->
           let%lwt () = input_help_if_user_input () in
           match%lwt get_valid_input_from_stdin_exn () with
           | Error e -> Shell.die "E: %s" e
@@ -247,7 +214,7 @@ module Create = struct
               | Secret.Singleline -> Secret.singleline_from_text_description parsed_secret.text comment
               | Secret.Multiline -> Secret.multiline_from_text_description parsed_secret.text comment)))
     in
-    invariant_create ~create_new_secret secret_name
+    invariant_create ~verbose ~create_new_secret secret_name
 
   let create =
     let doc =
@@ -255,7 +222,7 @@ module Create = struct
       tries to set them to the ones associated with \${PASSAGE_IDENTITY} |}
     in
     let info = Cmd.info "create" ~doc in
-    let term = main_run Term.(const create_new_secret_from_stdin $ Flags.secret_name $ Flags.comment) in
+    let term = main_run Term.(const (create_new_secret_from_stdin false) $ Flags.secret_name $ Flags.comment) in
     Cmd.v info term
 end
 
@@ -270,7 +237,7 @@ module Edit_cmd = struct
                 ~validate:validate_secret
                   (* when we are editing a secret, we know `initial` is Some and we add the format explainer to it *)
                 ?initial:(Option.map (fun i -> i ^ Secret.format_explainer) initial)
-                (Edit.new_text_from_editor ~name:(show_name secret_name))))
+                (new_text_from_editor ~name:(show_name secret_name))))
 
   let edit =
     let doc = "edit the contents of the specified secret" in
@@ -317,7 +284,7 @@ module Edit_comments = struct
           let get_comments_from_editor () =
             let%lwt new_comments =
               input_and_validate_loop ~validate:validate_comments ?initial:parsed_secret.comments
-                (Edit.new_text_from_editor ~name:(show_name secret_name))
+                (new_text_from_editor ~name:(show_name secret_name))
             in
             let new_comments = Result.map String.trim new_comments in
             match new_comments with
@@ -565,7 +532,8 @@ Checking for validity of own secrets. Use -v flag to break down per secret
                   match Secret.Validation.validate secret_text with
                   | Ok kind ->
                     let%lwt () =
-                      verbose_eprintlf "✅ %s [ valid %s ]" (show_name secret_name) (Secret.kind_to_string kind)
+                      verbose_eprintlf ~verbose:false "✅ %s [ valid %s ]" (show_name secret_name)
+                        (Secret.kind_to_string kind)
                     in
                     Lwt.return (succ ok, invalid, fail)
                   | Error (e, validation_error_type) ->
@@ -582,7 +550,9 @@ Checking for validity of own secrets. Use -v flag to break down per secret
                            let recipients =
                              Storage.Secrets.get_recipients_from_path_exn (path_of_secret_name secret_name)
                            in
-                           let%lwt () = Encrypt.encrypt_exn ~plaintext:upgraded_secret ~secret_name recipients in
+                           let%lwt () =
+                             Encrypt.encrypt_exn ~verbose:false ~plaintext:upgraded_secret ~secret_name recipients
+                           in
                            let%lwt () = eprintlf "I: updated %s" (show_name secret_name) in
                            Lwt.return 1
                          with exn ->
@@ -618,7 +588,7 @@ Checking for validity of own secrets. Use -v flag to break down per secret
   let healthcheck =
     let doc = "check for issues with secrets, find directories that don't have keys, etc." in
     let info = Cmd.info "healthcheck" ~doc in
-    let term = main_run Term.(const (fun () -> healthcheck) $ Flags.set_verbosity $ secrets_upgrade_mode) in
+    let term = main_run Term.(const healthcheck $ secrets_upgrade_mode) in
     Cmd.v info term
 end
 
@@ -698,19 +668,19 @@ module List_ = struct
 end
 
 module New = struct
-  let create_new_secret secret_name =
+  let create_new_secret verbose secret_name =
     let%lwt () =
-      Edit.edit_secret ~self_fallback:true secret_name ~allow_retry:true ~get_updated_secret:(fun initial ->
+      Edit.edit_secret ~verbose ~self_fallback:true secret_name ~allow_retry:true ~get_updated_secret:(fun initial ->
           input_and_validate_loop ~validate:validate_secret
             ~initial:(Option.value ~default:Secret.format_explainer initial)
-            (Edit.new_text_from_editor ~name:(show_name secret_name)))
+            (new_text_from_editor ~name:(show_name secret_name)))
     in
     let secret_path = path_of_secret_name secret_name in
     let original_recipients = Storage.Secrets.get_recipients_from_path_exn secret_path in
     Edit.show_recipients_notice_if_true (original_recipients = []);
     if%lwt yesno "Edit recipients for this secret?" then edit_recipients secret_name
 
-  let create_new_secret' secret_name = Create.invariant_create ~create_new_secret secret_name
+  let create_new_secret' secret_name = Create.invariant_create ~verbose:false ~create_new_secret secret_name
 
   let new_ =
     let doc = "interactive creation of a new single-line secret" in
@@ -739,12 +709,12 @@ module Realpath = struct
       "show the full filesystem path to secrets/folders.  Note it will only list existing files or directories."
     in
     let info = Cmd.info "realpath" ~doc in
-    let term = main_run Term.(const (fun () -> realpath) $ Flags.set_verbosity $ Flags.secrets_paths) in
+    let term = main_run Term.(const realpath $ Flags.secrets_paths) in
     Cmd.v info term
 end
 
 module Refresh = struct
-  let refresh_secrets paths =
+  let refresh_secrets ?(verbose = false) paths =
     let secrets =
       List.fold_left
         (fun acc path ->
@@ -758,12 +728,12 @@ module Refresh = struct
         [] paths
     in
     let secrets = List.sort_uniq Storage.Secret_name.compare secrets in
-    Storage.Secrets.refresh ~verbose:(!verbosity = Verbose) secrets
+    Storage.Secrets.refresh ~verbose secrets
 
   let refresh =
     let doc = "re-encrypt secrets in the specified path(s)" in
     let info = Cmd.info "refresh" ~doc in
-    let term = main_run Term.(const (fun () -> refresh_secrets) $ Flags.set_verbosity $ Flags.secrets_paths) in
+    let term = main_run Term.(const (fun verbose -> refresh_secrets ~verbose) $ Flags.verbose $ Flags.secrets_paths) in
     Cmd.v info term
 end
 
@@ -819,7 +789,7 @@ module Replace = struct
                   Secret.multiline_from_text_description new_secret_plaintext
                     (Option.value ~default:"" original_secret.comments))
           in
-          try%lwt Encrypt.encrypt_exn ~plaintext:updated_secret ~secret_name recipients
+          try%lwt Encrypt.encrypt_exn ~verbose:false ~plaintext:updated_secret ~secret_name recipients
           with exn -> Shell.die ~exn "E: encrypting %s failed" (show_name secret_name))
 
   let replace =
@@ -870,7 +840,7 @@ module Replace_comments = struct
               let get_comments_from_editor () =
                 match%lwt
                   input_and_validate_loop ~validate:validate_comments ?initial:original_secret.comments
-                    (Edit.new_text_from_editor ~name:(show_name secret_name))
+                    (new_text_from_editor ~name:(show_name secret_name))
                 with
                 | Error e -> Shell.die "The comments are in an invalid format: %s" e
                 | Ok secret -> Lwt.return secret
@@ -887,7 +857,7 @@ module Replace_comments = struct
               in
               Lwt.return updated_secret
           in
-          try%lwt Encrypt.encrypt_exn ~plaintext:updated_secret ~secret_name recipients
+          try%lwt Encrypt.encrypt_exn ~verbose:false ~plaintext:updated_secret ~secret_name recipients
           with exn -> Shell.die ~exn "E: encrypting %s failed" secret_name_str)
 
   let replace_comments =
@@ -902,7 +872,7 @@ module Rm = struct
     let doc = "Delete secrets and folders without asking for confirmation" in
     Arg.(value & flag & info [ "f"; "force" ] ~doc)
 
-  let rm_secrets paths force =
+  let rm_secrets ?(verbose = false) paths force =
     Lwt_list.iter_s
       (fun path ->
         let is_directory = Path.is_directory (Path.abs path) in
@@ -918,7 +888,7 @@ module Rm = struct
               | TTY false -> Lwt.return Storage.Secrets.Skipped)
           in
           (match rm_result with
-          | Storage.Secrets.Succeeded () -> verbose_eprintlf "I: removed %s" string_path
+          | Storage.Secrets.Succeeded () -> verbose_eprintlf ~verbose "I: removed %s" string_path
           | Skipped -> eprintlf "I: skipped deleting %s" string_path
           | Failed exn -> Shell.die "E: failed to delete %s : %s" string_path (Exn.to_string exn)))
       paths
@@ -926,18 +896,22 @@ module Rm = struct
   let rm =
     let doc = "remove a secret or a folder and its secrets" in
     let info = Cmd.info "rm" ~doc in
-    let term = main_run Term.(const (fun () -> rm_secrets) $ Flags.set_verbosity $ Flags.secrets_paths $ force) in
+    let term =
+      main_run Term.(const (fun verbose -> rm_secrets ~verbose) $ Flags.verbose $ Flags.secrets_paths $ force)
+    in
     Cmd.v info term
 
   let delete =
     let doc = "same as the $(i,rm) cmd. Remove a secret or a folder and its secrets" in
     let info = Cmd.info "delete" ~doc in
-    let term = main_run Term.(const (fun () -> rm_secrets) $ Flags.set_verbosity $ Flags.secrets_paths $ force) in
+    let term =
+      main_run Term.(const (fun verbose -> rm_secrets ~verbose) $ Flags.verbose $ Flags.secrets_paths $ force)
+    in
     Cmd.v info term
 end
 
 module Search = struct
-  let search_secrets pattern path =
+  let search_secrets ?(verbose = false) pattern path =
     let secrets = Storage.Secrets.get_secrets_tree path |> List.sort Storage.Secret_name.compare in
     let%lwt n_skipped, n_failed, n_matched, matched_secrets =
       Lwt_list.fold_left_s
@@ -946,7 +920,7 @@ module Search = struct
           | Succeeded true -> Lwt.return (n_skipped, n_failed, n_matched + 1, secret :: matched_secrets)
           | Succeeded false -> Lwt.return (n_skipped, n_failed, n_matched, matched_secrets)
           | Skipped ->
-            let%lwt () = verbose_eprintlf "I: skipped %s" (show_name secret) in
+            let%lwt () = verbose_eprintlf ~verbose "I: skipped %s" (show_name secret) in
             Lwt.return (n_skipped + 1, n_failed, n_matched, matched_secrets)
           | Failed exn ->
             let%lwt () = eprintlf "W: failed to search %s : %s" (show_name secret) (Exn.to_string exn) in
@@ -968,7 +942,9 @@ module Search = struct
       let doc = "the relative $(docv) from the secrets directory that will be searched" in
       Arg.(value & pos 1 Converters.path_arg (Path.inject ".") & info [] ~docv:"PATH" ~doc)
     in
-    let term = main_run Term.(const (fun () -> search_secrets) $ Flags.set_verbosity $ pattern $ secrets_path) in
+    let term =
+      main_run Term.(const (fun verbose -> search_secrets ~verbose) $ Flags.verbose $ pattern $ secrets_path)
+    in
     let doc = "list secrets in the specified path, containing contents that match the specified pattern" in
     let info = Cmd.info "search" ~doc in
     Cmd.v info term
@@ -1051,41 +1027,14 @@ module What = struct
     let doc = "the names of the recipients. Can be one or many" in
     Arg.(value & pos_all string [] & info [] ~docv:"PATH" ~doc)
 
-  let list_recipient_secrets recipients_names =
-    if recipients_names = [] then Shell.die "E: Must specify at least one recipient name";
-    let number_of_recipients = List.length recipients_names in
-    let all_recipient_names = Storage.Keys.all_recipient_names () in
-    Lwt_list.iter_s
-      (fun recipient_name ->
-        let open Storage in
-        match List.mem recipient_name all_recipient_names, Age.is_group_recipient recipient_name with
-        | false, false -> eprintlf "E: no such recipient %s" recipient_name
-        | _ ->
-        match Secrets.get_secrets_for_recipient recipient_name with
-        | [] -> eprintlf "\nNo secrets found for %s" recipient_name
-        | secrets ->
-          let%lwt () =
-            if number_of_recipients > 1 then eprintlf "\nSecrets which %s is a recipient of:" recipient_name
-            else Lwt.return_unit
-          in
-          let sorted = List.sort Secret_name.compare secrets in
-          let print_secret secret =
-            match !verbosity with
-            | Normal -> Lwt_io.printl (show_name secret)
-            | Verbose ->
-              (try%lwt
-                 let%lwt plaintext = Storage.Secrets.decrypt_exn ~silence_stderr:true secret in
-                 Lwt_io.printl @@ Secret.Validation.validity_to_string (show_name secret) plaintext
-               with _ -> Lwt_io.printlf "🚨 %s [ WARNING: failed to decrypt ]" (show_name secret))
-          in
-          let%lwt () = Lwt_list.iter_s print_secret sorted in
-          Lwt_io.(flush stderr))
-      recipients_names
-
   let what =
     let doc = "list secrets that a recipient has access to" in
     let info = Cmd.info "what" ~doc in
-    let term = main_run Term.(const (fun () -> list_recipient_secrets) $ Flags.set_verbosity $ recipient_name) in
+    let term =
+      main_run
+        Term.(
+          const (fun names verbose -> Recipients.list_recipient_secrets ~verbose names) $ recipient_name $ Flags.verbose)
+    in
     Cmd.v info term
 end
 
@@ -1093,12 +1042,12 @@ module My = struct
   let list_my_secrets () =
     let%lwt recipients_of_own_id = Storage.Secrets.recipients_of_own_id () in
     let recipients_names = List.map (fun r -> r.Age.name) recipients_of_own_id in
-    What.list_recipient_secrets recipients_names
+    Recipients.list_recipient_secrets ~verbose:false recipients_names
 
   let my =
     let doc = "list secrets that you have access to (alias for 'what <your.name>')" in
     let info = Cmd.info "my" ~doc in
-    let term = main_run Term.(const (fun () -> list_my_secrets) $ Flags.set_verbosity $ const ()) in
+    let term = main_run Term.(const list_my_secrets $ const ()) in
     Cmd.v info term
 end
 
