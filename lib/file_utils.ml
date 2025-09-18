@@ -45,3 +45,14 @@ let rec edit_loop tmpfile =
     | true -> edit_loop tmpfile
     | false -> Lwt.return false)
   else Lwt.return true
+
+let new_text_from_editor ?(initial = "") ?(name = "new") () =
+  with_secure_tmpfile name (fun (tmpfile, tmpfile_oc) ->
+      let%lwt () =
+        if initial <> "" then (
+          let%lwt () = Lwt_io.write tmpfile_oc initial in
+          Lwt_io.close tmpfile_oc)
+        else Lwt.return_unit
+      in
+      let%lwt () = Shell.editor tmpfile in
+      Lwt_io.(with_file ~mode:Input tmpfile read))

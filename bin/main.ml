@@ -7,6 +7,7 @@ open Prompt
 open File_utils
 open Recipients
 open Retry
+open Comment_input
 
 module Exn = Devkit.Exn
 
@@ -274,28 +275,7 @@ module Edit_comments = struct
       Invariant.run_if_recipient ~op_string:"edit comments" ~path ~f:(fun () ->
           let%lwt secret_plaintext = Storage.Secrets.decrypt_exn secret_name in
           let parsed_secret = Secret.Validation.parse_exn secret_plaintext in
-          let get_comments_from_stdin () =
-            let%lwt new_comments = Lwt_io.read Lwt_io.stdin in
-            let new_comments = String.trim new_comments in
-            match validate_comments new_comments with
-            | Error e -> Shell.die "E: %s" e
-            | _ -> Lwt.return new_comments
-          in
-          let get_comments_from_editor () =
-            let%lwt new_comments =
-              input_and_validate_loop ~validate:validate_comments ?initial:parsed_secret.comments
-                (new_text_from_editor ~name:(show_name secret_name))
-            in
-            let new_comments = Result.map String.trim new_comments in
-            match new_comments with
-            | Error e -> Shell.die "E: %s" e
-            | Ok new_comments -> Lwt.return new_comments
-          in
-          let%lwt new_comments =
-            match is_TTY with
-            | false -> get_comments_from_stdin ()
-            | true -> get_comments_from_editor ()
-          in
+          let%lwt new_comments = get_comments ?initial:parsed_secret.comments ~name:(show_name secret_name) () in
           match parsed_secret.comments, new_comments = "" with
           | None, true -> Shell.die "I: comments unchanged"
           | Some old, false when old = new_comments -> Shell.die "I: comments unchanged"
@@ -827,28 +807,10 @@ module Replace_comments = struct
                      edit command"
                     secret_name_str
               in
-              let get_comments_from_stdin () =
-                let%lwt () =
-                  input_help_if_user_input
-                    ~msg:"Please type the new comments and then do Ctrl+d twice to terminate input" ()
-                in
-                let%lwt new_comments = read_input_from_stdin () in
-                match validate_comments new_comments with
-                | Error e -> Shell.die "The comments are in an invalid format: %s" e
-                | _ -> Lwt.return new_comments
-              in
-              let get_comments_from_editor () =
-                match%lwt
-                  input_and_validate_loop ~validate:validate_comments ?initial:original_secret.comments
-                    (new_text_from_editor ~name:(show_name secret_name))
-                with
-                | Error e -> Shell.die "The comments are in an invalid format: %s" e
-                | Ok secret -> Lwt.return secret
-              in
               let%lwt new_comments =
-                match is_TTY with
-                | false -> get_comments_from_stdin ()
-                | true -> get_comments_from_editor ()
+                get_comments ?initial:original_secret.comments ~name:(show_name secret_name)
+                  ~help_message:(Some "Please type the new comments and then do Ctrl+d twice to terminate input")
+                  ~error_prefix:"The comments are in an invalid format:" ()
               in
               let updated_secret =
                 match original_secret.kind with

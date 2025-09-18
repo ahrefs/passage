@@ -16,5 +16,4 @@ let rec retry_with_prompt ~operation ~error_message ~prompt_message =
 let encrypt_with_retry ~plaintext ~secret_name recipients =
   retry_with_prompt
     ~operation:(fun () -> Storage.Secrets.encrypt_exn ~plaintext ~secret_name recipients)
-    ~error_message:"Encryption failed"
-    ~prompt_message:"Would you like to try again?"
+    ~error_message:"Encryption failed" ~prompt_message:"Would you like to try again?"

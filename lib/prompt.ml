@@ -64,8 +64,7 @@ let rec input_and_validate_loop ~validate ?initial get_input =
     if is_TTY = false then Shell.die "This secret is in an invalid format: %s" e
     else (
       let%lwt () = Lwt_io.printlf "\nThis secret is in an invalid format: %s" e in
-      if%lwt yesno "Edit again?" then input_and_validate_loop ~validate ~initial:input get_input
-      else Lwt.return_error e)
+      if%lwt yesno "Edit again?" then input_and_validate_loop ~validate ~initial:input get_input else Lwt.return_error e)
   | _ -> Lwt.return_ok secret
 
 (** Gets and validates user input reading from stdin. If the input has the wrong format, the user
