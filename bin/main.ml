@@ -458,6 +458,7 @@ module Healthcheck = struct
     let%lwt () =
       eprintl
         {|
+
 PASSAGE HEALTHCHECK. Diagnose for common problems
 
 ==========================================================================
@@ -474,7 +475,7 @@ Checking for folders without .keys file
       healthcheck_with_errors := true;
       Lwt.return_unit
 
-  let check_own_secrets_validity upgrade_mode =
+  let check_own_secrets_validity verbose upgrade_mode =
     let open Storage in
     let%lwt () =
       eprintl
@@ -499,8 +500,7 @@ Checking for validity of own secrets. Use -v flag to break down per secret
                   match Secret.Validation.validate secret_text with
                   | Ok kind ->
                     let%lwt () =
-                      verbose_eprintlf ~verbose:false "✅ %s [ valid %s ]" (show_name secret_name)
-                        (Secret.kind_to_string kind)
+                      verbose_eprintlf ~verbose "✅ %s [ valid %s ]" (show_name secret_name) (Secret.kind_to_string kind)
                     in
                     Lwt.return (succ ok, invalid, fail)
                   | Error (e, validation_error_type) ->
@@ -541,9 +541,9 @@ Checking for validity of own secrets. Use -v flag to break down per secret
           Lwt.return_unit)
       recipients_of_own_id
 
-  let healthcheck upgrade_mode =
+  let healthcheck verbose upgrade_mode =
     let%lwt () = check_folders_without_keys_file () in
-    let%lwt () = check_own_secrets_validity upgrade_mode in
+    let%lwt () = check_own_secrets_validity verbose upgrade_mode in
     match !healthcheck_with_errors with
     | true -> exit 1
     | false -> exit 0
@@ -551,7 +551,7 @@ Checking for validity of own secrets. Use -v flag to break down per secret
   let healthcheck =
     let doc = "check for issues with secrets, find directories that don't have keys, etc." in
     let info = Cmd.info "healthcheck" ~doc in
-    let term = main_run Term.(const healthcheck $ secrets_upgrade_mode) in
+    let term = main_run Term.(const healthcheck $ Flags.verbose $ secrets_upgrade_mode) in
     Cmd.v info term
 end
 

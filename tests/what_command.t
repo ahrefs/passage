@@ -73,3 +73,11 @@ Should succeed - my command as an alias for what <my.name>
   01/secret1
   02/secret1
   04/secret1
+
+Should succeed - verbose mode shows secret validity information
+$ passage what -v bobby.bob
+✅ 00/.secret_starting_with_dot [ valid Singleline ]
+✅ 00/secret1 [ valid Multiline ]
+✅ 01/secret1 [ valid Multiline ]
+✅ 02/secret1 [ valid Multiline ]
+✅ 04/secret1 [ valid Multiline ]
