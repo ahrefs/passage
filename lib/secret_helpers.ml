@@ -18,7 +18,7 @@ let check_exists secret_name =
   | true -> ()
 
 (** Check if a secret exists, die with hint about create/new if not *)
-let check_exists_with_hint secret_name =
+let check_exists_or_die secret_name =
   match Storage.Secrets.secret_exists secret_name with
   | false ->
     Shell.die "E: no such secret: %s.  Use \"new\" or \"create\" for new secrets." (Display.show_name secret_name)
@@ -30,11 +30,3 @@ let reconstruct_with_new_text ~is_singleline ~new_text ~existing_comments =
   match is_singleline with
   | true -> Secret.singleline_from_text_description new_text comments
   | false -> Secret.multiline_from_text_description new_text comments
-
-(** Check if a secret or directory exists at path *)
-let check_exists_at_path path =
-  match Storage.Secrets.secret_exists_at path with
-  | false ->
-    if Path.is_directory (Path.abs path) then Shell.die "E: %s is a directory" (Display.show_path path)
-    else Shell.die "E: no such secret: %s" (Display.show_path path)
-  | true -> ()

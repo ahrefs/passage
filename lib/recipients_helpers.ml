@@ -1,7 +1,7 @@
 (** Recipients helper utilities for common patterns *)
 
 (** Get recipients from secret name and handle "no recipients found" error *)
-let get_recipients_or_die_with_hint secret_name =
+let get_recipients_or_die secret_name =
   let recipients = Storage.Secrets.(get_recipients_from_path_exn @@ to_path secret_name) in
   match recipients with
   | [] ->
