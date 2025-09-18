@@ -8,6 +8,8 @@ open File_utils
 open Recipients
 open Retry
 open Comment_input
+open Recipients_helpers
+open Secret_helpers
 
 module Exn = Devkit.Exn
 
@@ -64,12 +66,12 @@ If the secret is a staging secret, its only recipient should be @everyone.
       | Error e, _ -> Shell.die "E: %s" e
       | Ok updated_secret, _ ->
         let secret_path = path_of_secret_name secret_name in
-        let secret_recipients' = Storage.Secrets.get_recipients_from_path_exn secret_path in
+        let secret_recipients' = get_recipients_for_path secret_path in
         let%lwt secret_recipients =
           if secret_recipients' = [] && self_fallback then (
             let%lwt own_recipients = Storage.Secrets.recipients_of_own_id () in
             let%lwt () = add_recipients_if_none_exists own_recipients secret_path in
-            Lwt.return @@ Storage.Secrets.get_recipients_from_path_exn secret_path)
+            Lwt.return @@ get_recipients_for_path secret_path)
           else Lwt.return secret_recipients'
         in
         if secret_recipients = [] then Exn.fail "E: no recipients specified for this secret"
@@ -208,7 +210,7 @@ module Create = struct
             in
             (match validate_comments comment with
             | Error e -> Shell.die "E: invalid comment format: %s" e
-            | Ok () -> Lwt_result.return @@ Secret_helpers.reconstruct_secret ~comments:(Some comment) parsed_secret))
+            | Ok () -> Lwt_result.return @@ reconstruct_secret ~comments:(Some comment) parsed_secret))
     in
     invariant_create ~verbose ~create_new_secret secret_name
 
@@ -224,7 +226,7 @@ end
 
 module Edit_cmd = struct
   let edit secret_name =
-    Secret_helpers.check_exists_with_hint secret_name;
+    check_exists_with_hint secret_name;
     Invariant.run_if_recipient ~op_string:"edit secret" ~path:(path_of_secret_name secret_name) ~f:(fun () ->
         Edit.edit_secret secret_name ~allow_retry:true ~get_updated_secret:(fun initial ->
             input_and_validate_loop
@@ -261,17 +263,17 @@ end
 
 module Edit_comments = struct
   let edit_comments secret_name =
-    Secret_helpers.check_exists_with_hint secret_name;
+    check_exists_with_hint secret_name;
     let path = path_of_secret_name secret_name in
     Invariant.run_if_recipient ~op_string:"edit comments" ~path ~f:(fun () ->
-        let%lwt parsed_secret = Secret_helpers.decrypt_and_parse secret_name in
+        let%lwt parsed_secret = decrypt_and_parse secret_name in
         let%lwt new_comments = get_comments ?initial:parsed_secret.comments ~name:(show_name secret_name) () in
         match parsed_secret.comments, new_comments = "" with
         | None, true -> Shell.die "I: comments unchanged"
         | Some old, false when old = new_comments -> Shell.die "I: comments unchanged"
         | _ ->
-          let updated_secret = Secret_helpers.reconstruct_secret ~comments:(Some new_comments) parsed_secret in
-          let secret_recipients = Storage.Secrets.get_recipients_from_path_exn path in
+          let updated_secret = reconstruct_secret ~comments:(Some new_comments) parsed_secret in
+          let secret_recipients = get_recipients_for_path path in
           (try%lwt encrypt_with_retry ~plaintext:updated_secret ~secret_name secret_recipients
            with exn -> Shell.die ~exn "E: encrypting %s failed" (show_name secret_name)))
 
@@ -510,12 +512,8 @@ Checking for validity of own secrets. Use -v flag to break down per secret
                       | Upgrade, SingleLineLegacy ->
                         (try%lwt
                            let parsed_secret = Secret.Validation.parse_exn secret_text in
-                           let upgraded_secret =
-                             Secret_helpers.reconstruct_secret ~comments:parsed_secret.comments parsed_secret
-                           in
-                           let recipients =
-                             Storage.Secrets.get_recipients_from_path_exn (path_of_secret_name secret_name)
-                           in
+                           let upgraded_secret = reconstruct_secret ~comments:parsed_secret.comments parsed_secret in
+                           let recipients = get_recipients_for_path (path_of_secret_name secret_name) in
                            let%lwt () =
                              Encrypt.encrypt_exn ~verbose:false ~plaintext:upgraded_secret ~secret_name recipients
                            in
@@ -642,7 +640,7 @@ module New = struct
             (new_text_from_editor ~name:(show_name secret_name)))
     in
     let secret_path = path_of_secret_name secret_name in
-    let original_recipients = Storage.Secrets.get_recipients_from_path_exn secret_path in
+    let original_recipients = get_recipients_for_path secret_path in
     Edit.show_recipients_notice_if_true (original_recipients = []);
     if%lwt yesno "Edit recipients for this secret?" then edit_recipients secret_name
 
@@ -705,53 +703,47 @@ end
 
 module Replace = struct
   let replace_secret secret_name =
-    let recipients = Storage.Secrets.(get_recipients_from_path_exn @@ to_path secret_name) in
-    match recipients with
-    | [] ->
-      Shell.die
-        {|E: No recipients found (use "passage {create,new} folder/new_secret_name" to use recipients associated with $PASSAGE_IDENTITY instead)|}
-        (show_name secret_name)
-    | _ ->
-      Invariant.run_if_recipient ~op_string:"replace secret" ~path:(path_of_secret_name secret_name) ~f:(fun () ->
-          let%lwt () = input_help_if_user_input () in
-          (* We don't need to run validation for the input here since we will be replacing only the secret
-              and not the whole file *)
-          let%lwt new_secret_plaintext = read_input_from_stdin () in
-          if new_secret_plaintext = "" then Shell.die "E: invalid input, empty secrets are not allowed.";
-          let is_singleline_secret =
-            (* New secret is single line if doesn't have a newline character or if it has only one,
-                at the end of the first line. This input isn't supposed to follow the storage format,
-               it only contains a secret and no comments *)
-            match String.split_on_char '\n' new_secret_plaintext with
-            | [ _ ] | [ _; "" ] -> true
-            | _ -> false
-          in
-          let%lwt updated_secret =
-            match Storage.Secrets.secret_exists secret_name with
-            | false ->
-              (* if the secret doesn't exist yet, create a new secret with the right format *)
-              Lwt.return
-                (match is_singleline_secret with
-                | true -> new_secret_plaintext
-                | false -> "\n\n" ^ new_secret_plaintext)
-            | true ->
-              (* if there is already a secret, recreate or replace it *)
-              let%lwt original_secret =
-                try%lwt
-                  let%lwt secret_plaintext = Storage.Secrets.decrypt_exn ~silence_stderr:true secret_name in
-                  Lwt.return @@ Secret.Validation.parse_exn secret_plaintext
-                with _e ->
-                  Shell.die
-                    "E: unable to parse secret %s's format. If we proceed, the comments will be lost. Aborting. Please \
-                     use the edit command to replace and fix this secret."
-                    (show_name secret_name)
-              in
-              Lwt.return
-                (Secret_helpers.reconstruct_with_new_text ~is_singleline:is_singleline_secret
-                   ~new_text:new_secret_plaintext ~existing_comments:original_secret.comments)
-          in
-          try%lwt Encrypt.encrypt_exn ~verbose:false ~plaintext:updated_secret ~secret_name recipients
-          with exn -> Shell.die ~exn "E: encrypting %s failed" (show_name secret_name))
+    let recipients = get_recipients_or_die_with_hint secret_name in
+    Invariant.run_if_recipient ~op_string:"replace secret" ~path:(path_of_secret_name secret_name) ~f:(fun () ->
+        let%lwt () = input_help_if_user_input () in
+        (* We don't need to run validation for the input here since we will be replacing only the secret
+            and not the whole file *)
+        let%lwt new_secret_plaintext = read_input_from_stdin () in
+        if new_secret_plaintext = "" then Shell.die "E: invalid input, empty secrets are not allowed.";
+        let is_singleline_secret =
+          (* New secret is single line if doesn't have a newline character or if it has only one,
+              at the end of the first line. This input isn't supposed to follow the storage format,
+             it only contains a secret and no comments *)
+          match String.split_on_char '\n' new_secret_plaintext with
+          | [ _ ] | [ _; "" ] -> true
+          | _ -> false
+        in
+        let%lwt updated_secret =
+          match Storage.Secrets.secret_exists secret_name with
+          | false ->
+            (* if the secret doesn't exist yet, create a new secret with the right format *)
+            Lwt.return
+              (match is_singleline_secret with
+              | true -> new_secret_plaintext
+              | false -> "\n\n" ^ new_secret_plaintext)
+          | true ->
+            (* if there is already a secret, recreate or replace it *)
+            let%lwt original_secret =
+              try%lwt
+                let%lwt secret_plaintext = Storage.Secrets.decrypt_exn ~silence_stderr:true secret_name in
+                Lwt.return @@ Secret.Validation.parse_exn secret_plaintext
+              with _e ->
+                Shell.die
+                  "E: unable to parse secret %s's format. If we proceed, the comments will be lost. Aborting. Please \
+                   use the edit command to replace and fix this secret."
+                  (show_name secret_name)
+            in
+            Lwt.return
+              (reconstruct_with_new_text ~is_singleline:is_singleline_secret ~new_text:new_secret_plaintext
+                 ~existing_comments:original_secret.comments)
+        in
+        try%lwt Encrypt.encrypt_exn ~verbose:false ~plaintext:updated_secret ~secret_name recipients
+        with exn -> Shell.die ~exn "E: encrypting %s failed" (show_name secret_name))
 
   let replace =
     let doc =
@@ -765,32 +757,26 @@ end
 
 module Replace_comments = struct
   let replace_comment secret_name =
-    let recipients = Storage.Secrets.(get_recipients_from_path_exn @@ to_path secret_name) in
+    let recipients = get_recipients_or_die_with_hint secret_name in
     let secret_name_str = show_name secret_name in
-    match recipients with
-    | [] ->
-      Shell.die
-        {|E: No recipients found (use "passage {create,new} folder/new_secret_name" to use recipients associated with $PASSAGE_IDENTITY instead)|}
-        secret_name_str
-    | _ ->
-      Invariant.run_if_recipient ~op_string:"replace comments" ~path:(path_of_secret_name secret_name) ~f:(fun () ->
-          Secret_helpers.check_exists secret_name;
-          let%lwt original_secret =
-            try%lwt Secret_helpers.decrypt_and_parse ~silence_stderr:true secret_name
-            with _e ->
-              Shell.die
-                "E: unable to parse secret %s's format. Please fix it before replacing the comments,or use the edit \
-                 command"
-                secret_name_str
-          in
-          let%lwt new_comments =
-            get_comments ?initial:original_secret.comments ~name:(show_name secret_name)
-              ~help_message:(Some "Please type the new comments and then do Ctrl+d twice to terminate input")
-              ~error_prefix:"The comments are in an invalid format:" ()
-          in
-          let updated_secret = Secret_helpers.reconstruct_secret ~comments:(Some new_comments) original_secret in
-          try%lwt Encrypt.encrypt_exn ~verbose:false ~plaintext:updated_secret ~secret_name recipients
-          with exn -> Shell.die ~exn "E: encrypting %s failed" secret_name_str)
+    Invariant.run_if_recipient ~op_string:"replace comments" ~path:(path_of_secret_name secret_name) ~f:(fun () ->
+        check_exists secret_name;
+        let%lwt original_secret =
+          try%lwt decrypt_and_parse ~silence_stderr:true secret_name
+          with _e ->
+            Shell.die
+              "E: unable to parse secret %s's format. Please fix it before replacing the comments,or use the edit \
+               command"
+              secret_name_str
+        in
+        let%lwt new_comments =
+          get_comments ?initial:original_secret.comments ~name:(show_name secret_name)
+            ~help_message:(Some "Please type the new comments and then do Ctrl+d twice to terminate input")
+            ~error_prefix:"The comments are in an invalid format:" ()
+        in
+        let updated_secret = reconstruct_secret ~comments:(Some new_comments) original_secret in
+        try%lwt Encrypt.encrypt_exn ~verbose:false ~plaintext:updated_secret ~secret_name recipients
+        with exn -> Shell.die ~exn "E: encrypting %s failed" secret_name_str)
 
   let replace_comments =
     let doc = "replaces the comments of the specified secret, keeping the secret." in
