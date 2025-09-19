@@ -16,9 +16,4 @@ val age_get_recipient_key_from_identity_file : string -> string
 
 val age_encrypt : stdin:in_channel -> stdout:out_channel -> string list -> unit
 
-val age_decrypt :
-  stdin:in_channel ->
-  stdout:out_channel ->
-  ?stderr:out_channel ->
-  string ->
-  unit
+val age_decrypt : stdin:in_channel -> stdout:out_channel -> ?stderr:out_channel -> string -> unit

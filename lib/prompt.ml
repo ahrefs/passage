@@ -1,7 +1,5 @@
 (** User prompt and input utilities *)
 
-open Printf
-
 type prompt_reply =
   | NoTTY
   | TTY of bool
@@ -29,10 +27,22 @@ let yesno_tty_check prompt =
 
 let input_help_if_user_input ?(msg = "Please type the secret and then do Ctrl+d twice to terminate input") () =
   match is_TTY with
-  | true -> Lwt_io.printl @@ sprintf "I: reading from stdin. %s" msg
-  | false -> Lwt.return_unit
+  | true -> Printf.printf "I: reading from stdin. %s\n" msg
+  | false -> ()
 
-let read_input_from_stdin ?initial:_ () = Lwt_io.(read stdin)
+let read_input_from_stdin ?initial:_ () =
+  let buf = Buffer.create 4096 in
+  let chunk = Bytes.create 4096 in
+  let rec loop () =
+    try
+      let n = input stdin chunk 0 4096 in
+      if n = 0 then Buffer.contents buf
+      else (
+        Buffer.add_subbytes buf chunk 0 n;
+        loop ())
+    with End_of_file -> Buffer.contents buf
+  in
+  loop ()
 
 let rec input_and_validate_loop ~validate ?initial get_input =
   let remove_trailing_newlines s =
@@ -53,7 +63,7 @@ let rec input_and_validate_loop ~validate ?initial get_input =
     let new_length = String.length s - trailing_newlines in
     if new_length <= 0 then "" else String.sub s 0 new_length
   in
-  let%lwt input = get_input ?initial () in
+  let input = get_input ?initial () in
   (* Remove bash commented lines from the secret and any trailing newlines *)
   let secret =
     String.split_on_char '\n' input
@@ -74,6 +84,6 @@ let rec input_and_validate_loop ~validate ?initial get_input =
     transformation. Throws an error if the transformed input doesn't comply with the format and the
     user doesn't want to fix the input format. *)
 let get_valid_input_from_stdin_exn ?(validate = Validation.validate_secret) () =
-  match%lwt input_and_validate_loop ~validate read_input_from_stdin with
+  match input_and_validate_loop ~validate read_input_from_stdin with
   | Error e -> Shell.die "This secret is in an invalid format: %s" e
-  | Ok secret -> Lwt.return_ok secret
+  | Ok secret -> Ok secret

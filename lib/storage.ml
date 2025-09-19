@@ -239,27 +239,27 @@ module Secrets = struct
     match force || is_recipient_of_secret self_key secret_name with
     | false -> Skipped
     | true ->
-      (try
-         let fd_r, fd_w = Unix.pipe () in
-         let () =
-           let secret_file = Path.abs @@ agefile_of_name secret_name in
-           let secret_fd = Unix.openfile (Path.project secret_file) [ O_RDONLY ] 0o400 in
-           let stdin_channel = Unix.in_channel_of_descr secret_fd in
-           let stdout_channel = Unix.out_channel_of_descr fd_w in
-           Age.decrypt_from_stdin_to_stdout ~identity_file:!!Config.identity_file ~stdin:stdin_channel
-             ~silence_stderr:false ~stdout:stdout_channel;
-           close_in stdin_channel;
-           close_out stdout_channel
-         in
-         let () =
-           let recipients = get_recipients_from_path_exn (to_path secret_name) in
-           let stdin_channel = Unix.in_channel_of_descr fd_r in
-           encrypt_using_tmpfile ~secret_name
-             ~encrypt_to_stdout:(Age.encrypt_from_stdin_to_stdout ~recipients ~stdin:stdin_channel);
-           close_in stdin_channel
-         in
-         Succeeded ()
-       with exn -> Failed exn)
+    try
+      let fd_r, fd_w = Unix.pipe () in
+      let () =
+        let secret_file = Path.abs @@ agefile_of_name secret_name in
+        let secret_fd = Unix.openfile (Path.project secret_file) [ O_RDONLY ] 0o400 in
+        let stdin_channel = Unix.in_channel_of_descr secret_fd in
+        let stdout_channel = Unix.out_channel_of_descr fd_w in
+        Age.decrypt_from_stdin_to_stdout ~identity_file:!!Config.identity_file ~stdin:stdin_channel
+          ~silence_stderr:false ~stdout:stdout_channel;
+        close_in stdin_channel;
+        close_out stdout_channel
+      in
+      let () =
+        let recipients = get_recipients_from_path_exn (to_path secret_name) in
+        let stdin_channel = Unix.in_channel_of_descr fd_r in
+        encrypt_using_tmpfile ~secret_name
+          ~encrypt_to_stdout:(Age.encrypt_from_stdin_to_stdout ~recipients ~stdin:stdin_channel);
+        close_in stdin_channel
+      in
+      Succeeded ()
+    with exn -> Failed exn
 
   let refresh ~verbose ?force secrets =
     let verbose_print fmt =
@@ -278,13 +278,13 @@ module Secrets = struct
           match refresh' ?force secret self_key with
           | Succeeded () ->
             let () = verbose_print "I: refreshed %s" raw_secret_name in
-            (skipped, refreshed + 1, failed)
+            skipped, refreshed + 1, failed
           | Skipped ->
             let () = verbose_print "I: skipped %s" raw_secret_name in
-            (skipped + 1, refreshed, failed)
+            skipped + 1, refreshed, failed
           | Failed exn ->
             let () = verbose_print "W: failed to refresh %s : %s" raw_secret_name (Devkit.Exn.to_string exn) in
-            (skipped, refreshed, failed + 1))
+            skipped, refreshed, failed + 1)
         (0, 0, 0) secrets
     in
     Printf.eprintf "I: refreshed %d secrets, skipped %d, failed %d\n" refreshed skipped failed
@@ -313,11 +313,11 @@ module Secrets = struct
     match is_recipient_of_secret self_key secret_name with
     | false -> Skipped
     | true ->
-      (match decrypt_exn ~silence_stderr:true secret_name with
-      | exception exn -> Failed exn
-      | content ->
-        let matched = Re2.matches pattern content in
-        Succeeded matched)
+    match decrypt_exn ~silence_stderr:true secret_name with
+    | exception exn -> Failed exn
+    | content ->
+      let matched = Re2.matches pattern content in
+      Succeeded matched
 
   (** Returns a list with the keys that are recipients for the default identity file *)
   let recipients_of_own_id () =

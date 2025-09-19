@@ -4,15 +4,6 @@
 (library
  (name passage)
  (public_name passage)
- (libraries
-  devkit
-  extunix
-  fileutils
-  fpath
-  lwt.unix
-  menhirLib
-  re2
-  sedlex
-  unix)
+ (libraries bos devkit extunix fileutils fpath menhirLib re2 sedlex unix)
  (preprocess
-  (pps lwt_ppx sedlex.ppx)))
+  (pps sedlex.ppx)))

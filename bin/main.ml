@@ -17,12 +17,12 @@ type output_mode =
   | QrCode
   | Stdout
 
-let eprintl s = Printf.eprintf "%s\n" s; flush stderr
+let eprintl s =
+  Printf.eprintf "%s\n" s;
+  flush stderr
 let eprintlf = Printf.eprintf
 
-let verbose_eprintlf ?(verbose = false) fmt =
-  if verbose then ksprintf eprintl fmt else ksprintf (fun _ -> ()) fmt
-
+let verbose_eprintlf ?(verbose = false) fmt = if verbose then ksprintf eprintl fmt else ksprintf (fun _ -> ()) fmt
 
 module Encrypt = struct
   let encrypt_exn ?(verbose = false) ~plaintext ~secret_name recipients =
@@ -52,8 +52,8 @@ If the secret is a staging secret, its only recipient should be @everyone.
       match Storage.Secrets.secret_exists secret_name with
       | false -> None
       | true ->
-        (try  Devkit.some @@ Storage.Secrets.decrypt_exn secret_name
-         with exn -> Shell.die ~exn "E: failed to decrypt %s" raw_secret_name)
+      try Devkit.some @@ Storage.Secrets.decrypt_exn secret_name
+      with exn -> Shell.die ~exn "E: failed to decrypt %s" raw_secret_name
     in
     try
       let updated_secret = get_updated_secret original_secret in
@@ -78,10 +78,10 @@ If the secret is a staging secret, its only recipient should be @everyone.
             show_recipients_notice_if_true is_first_secret_in_new_folder;
             encrypt_with_retry ~plaintext:updated_secret ~secret_name secret_recipients
           | false ->
-            (try
-               show_recipients_notice_if_true is_first_secret_in_new_folder;
-               Encrypt.encrypt_exn ~verbose ~plaintext:updated_secret ~secret_name secret_recipients
-             with exn -> Exn.fail ~exn "E: encrypting %s failed" raw_secret_name))
+          try
+            show_recipients_notice_if_true is_first_secret_in_new_folder;
+            Encrypt.encrypt_exn ~verbose ~plaintext:updated_secret ~secret_name secret_recipients
+          with exn -> Exn.fail ~exn "E: encrypting %s failed" raw_secret_name)
     with Failure s -> Shell.die "%s" s
 end
 
@@ -199,7 +199,7 @@ module Create = struct
             in
             (match validate_comments comment with
             | Error e -> Shell.die "E: invalid comment format: %s" e
-            | Ok () -> Ok @@ reconstruct_secret ~comments:(Some comment) parsed_secret))
+            | Ok () -> Ok (reconstruct_secret ~comments:(Some comment) parsed_secret)))
     in
     if Storage.Secrets.secret_exists secret_name then
       Shell.die "E: refusing to create: a secret by that name already exists"
@@ -294,7 +294,7 @@ module Get = struct
         with exn -> Exn.fail ~exn "E: could not copy data to the clipboard"
       in
       let restore_clipboard original_content =
-        let () = Unix.sleep (float_of_int Config.clip_time) in
+        let () = Unix.sleep Config.clip_time in
         let current_content = read_clipboard () in
         (* It might be nice to programatically check to see if klipper exists,
            as well as checking for other common clipboard managers. But for now,
@@ -388,8 +388,7 @@ module Get = struct
       | true, false | false, true -> secret
     in
     match output_mode with
-    | QrCode ->
-      Output.print_as_qrcode ~secret_name ~secret
+    | QrCode -> Output.print_as_qrcode ~secret_name ~secret
     | Clipboard -> Output.save_to_clipboard ~secret_name ~secret
     | Stdout -> print_string secret
 
@@ -408,12 +407,12 @@ module Get = struct
       get_secret ?expected_kind ~with_comments:false ?line_number ~trim_new_line secret_name output_mode
     in
     Term.(
-        const get
-        $ Flags.secret_name
-        $ Flags.secret_output_mode
-        $ Flags.secret_line_number
-        $ singleline_only
-        $ trim_new_line)
+      const get
+      $ Flags.secret_name
+      $ Flags.secret_output_mode
+      $ Flags.secret_line_number
+      $ singleline_only
+      $ trim_new_line)
 
   let get =
     let doc = "get the text of the specified secret, excluding comments" in
@@ -494,8 +493,10 @@ Checking for validity of own secrets. Use -v flag to break down per secret
                   let secret_text = Secrets.decrypt_exn ~silence_stderr:true secret_name in
                   match Secret.Validation.validate secret_text with
                   | Ok kind ->
-                    let () = verbose_eprintlf ~verbose "✅ %s [ valid %s ]" (show_name secret_name) (Secret.kind_to_string kind) in
-                    (succ ok, invalid, fail)
+                    let () =
+                      verbose_eprintlf ~verbose "✅ %s [ valid %s ]" (show_name secret_name) (Secret.kind_to_string kind)
+                    in
+                    succ ok, invalid, fail
                   | Error (e, validation_error_type) ->
                     healthcheck_with_errors := true;
                     let () = Printf.eprintf "❌ %s [ invalid format: %s ]\n" (show_name secret_name) e in
@@ -511,17 +512,17 @@ Checking for validity of own secrets. Use -v flag to break down per secret
                            1
                          with exn ->
                            Printf.eprintf "E: encrypting %s failed: %s\n" (show_name secret_name)
-                               (Printexc.to_string exn);
+                             (Printexc.to_string exn);
                            0)
                       | DryRun, SingleLineLegacy ->
                         eprintlf "I: would update %s" (show_name secret_name);
                         1
                       | NoUpgrade, _ | Upgrade, _ | DryRun, _ -> 0
                     in
-                    (ok + upgraded_secrets, succ (invalid - upgraded_secrets), fail)
+                    ok + upgraded_secrets, succ (invalid - upgraded_secrets), fail
                 with _ ->
                   let () = Printf.eprintf "🚨 %s [ WARNING: failed to decrypt ]\n" (show_name secret_name) in
-                  (ok, invalid, succ fail))
+                  ok, invalid, succ fail)
               (0, 0, 0) sorted_secrets
           in
           let () = Printf.eprintf "\nI: %i valid secrets, %i invalid and %i with decryption issues\n" ok invalid fail in
@@ -591,13 +592,11 @@ end
 module List_ = struct
   let list_secrets path =
     let raw_path = show_path path in
-    let secret_exists = try (Storage.Secrets.secret_exists_at path) with _exn -> false in
+    let secret_exists = try Storage.Secrets.secret_exists_at path with _exn -> false in
     match secret_exists with
     | true -> print_endline Storage.Secrets.(name_of_file (Path.abs path) |> show_name)
     | false ->
-      let is_dir =
-        try (Path.is_directory (Path.abs path)) with exn -> Shell.die ~exn "E: %s" raw_path
-      in
+      let is_dir = try Path.is_directory (Path.abs path) with exn -> Shell.die ~exn "E: %s" raw_path in
       (match is_dir with
       | true ->
         Storage.(Secrets.get_secrets_tree path |> List.sort Secret_name.compare)
@@ -619,7 +618,8 @@ end
 
 module New = struct
   let create_new_secret verbose secret_name =
-          Edit.edit_secret ~verbose ~self_fallback:true secret_name ~allow_retry:true ~get_updated_secret:(fun initial ->
+    let () =
+      Edit.edit_secret ~verbose ~self_fallback:true secret_name ~allow_retry:true ~get_updated_secret:(fun initial ->
           input_and_validate_loop ~validate:validate_secret
             ~initial:(Option.value ~default:Secret.format_explainer initial)
             (new_text_from_editor ~name:(show_name secret_name)))
@@ -714,9 +714,9 @@ module Replace = struct
           match Storage.Secrets.secret_exists secret_name with
           | false ->
             (* if the secret doesn't exist yet, create a new secret with the right format *)
-                          (match is_singleline_secret with
-              | true -> new_secret_plaintext
-              | false -> "\n\n" ^ new_secret_plaintext)
+            (match is_singleline_secret with
+            | true -> new_secret_plaintext
+            | false -> "\n\n" ^ new_secret_plaintext)
           | true ->
             (* if there is already a secret, recreate or replace it *)
             let original_secret =
@@ -729,8 +729,8 @@ module Replace = struct
                    use the edit command to replace and fix this secret."
                   (show_name secret_name)
             in
-                          (reconstruct_with_new_text ~is_singleline:is_singleline_secret ~new_text:new_secret_plaintext
-                 ~existing_comments:original_secret.comments)
+            reconstruct_with_new_text ~is_singleline:is_singleline_secret ~new_text:new_secret_plaintext
+              ~existing_comments:original_secret.comments
         in
         try Encrypt.encrypt_exn ~verbose:false ~plaintext:updated_secret ~secret_name recipients
         with exn -> Shell.die ~exn "E: encrypting %s failed" (show_name secret_name))
@@ -808,17 +808,13 @@ module Rm = struct
   let rm =
     let doc = "remove a secret or a folder and its secrets" in
     let info = Cmd.info "rm" ~doc in
-    let term =
-      Term.(const (fun verbose -> rm_secrets ~verbose) $ Flags.verbose $ Flags.secrets_paths $ force)
-    in
+    let term = Term.(const (fun verbose -> rm_secrets ~verbose) $ Flags.verbose $ Flags.secrets_paths $ force) in
     Cmd.v info term
 
   let delete =
     let doc = "same as the $(i,rm) cmd. Remove a secret or a folder and its secrets" in
     let info = Cmd.info "delete" ~doc in
-    let term =
-      Term.(const (fun verbose -> rm_secrets ~verbose) $ Flags.verbose $ Flags.secrets_paths $ force)
-    in
+    let term = Term.(const (fun verbose -> rm_secrets ~verbose) $ Flags.verbose $ Flags.secrets_paths $ force) in
     Cmd.v info term
 end
 
@@ -829,20 +825,19 @@ module Search = struct
       List.fold_left
         (fun (n_skipped, n_failed, n_matched, matched_secrets) secret ->
           match Storage.Secrets.search secret pattern with
-          | Succeeded true -> (n_skipped, n_failed, n_matched + 1, secret :: matched_secrets)
-          | Succeeded false -> (n_skipped, n_failed, n_matched, matched_secrets)
+          | Succeeded true -> n_skipped, n_failed, n_matched + 1, secret :: matched_secrets
+          | Succeeded false -> n_skipped, n_failed, n_matched, matched_secrets
           | Skipped ->
             verbose_eprintlf ~verbose "I: skipped %s" (show_name secret);
-            (n_skipped + 1, n_failed, n_matched, matched_secrets)
+            n_skipped + 1, n_failed, n_matched, matched_secrets
           | Failed exn ->
             eprintlf "W: failed to search %s : %s" (show_name secret) (Exn.to_string exn);
-            (n_skipped, n_failed + 1, n_matched, matched_secrets))
+            n_skipped, n_failed + 1, n_matched, matched_secrets)
         (0, 0, 0, []) secrets
     in
-          Printf.eprintf "I: skipped %d secrets, failed to search %d secrets and matched %d secrets\n" n_skipped n_failed
-        n_matched
-    in
-    List.rev matched_secrets |> List.iter (fun s -> print_endline (show_name s))
+    List.rev matched_secrets |> List.iter (fun s -> print_endline (show_name s));
+    Printf.eprintf "I: skipped %d secrets, failed to search %d secrets and matched %d secrets\n" n_skipped n_failed
+      n_matched
 
   let search =
     let pattern =
@@ -853,9 +848,7 @@ module Search = struct
       let doc = "the relative $(docv) from the secrets directory that will be searched" in
       Arg.(value & pos 1 Converters.path_arg (Path.inject ".") & info [] ~docv:"PATH" ~doc)
     in
-    let term =
-      Term.(const (fun verbose -> search_secrets ~verbose) $ Flags.verbose $ pattern $ secrets_path)
-    in
+    let term = Term.(const (fun verbose -> search_secrets ~verbose) $ Flags.verbose $ pattern $ secrets_path) in
     let doc = "list secrets in the specified path, containing contents that match the specified pattern" in
     let info = Cmd.info "search" ~doc in
     Cmd.v info term
@@ -895,8 +888,7 @@ module Subst = struct
     let doc = "a template on the commandline" in
     Arg.(required & pos 0 (some Converters.template_arg) None & info [] ~doc ~docv:"TEMPLATE_ARG")
 
-  let substitute template =
-    try Template.substitute ~template () with exn -> Shell.die ~exn "E: failed to substitute"
+  let substitute template = try Template.substitute ~template () with exn -> Shell.die ~exn "E: failed to substitute"
 
   let subst =
     let doc = "fill in values in the provided template" in
@@ -907,8 +899,7 @@ end
 
 module Template_cmd = struct
   let substitute_template template_file target_file =
-    try Template.substitute_file ~template_file ~target_file
-    with exn -> Shell.die ~exn "E: failed to substitute file"
+    try Template.substitute_file ~template_file ~target_file with exn -> Shell.die ~exn "E: failed to substitute file"
 
   let target_file =
     let doc = "the target file for templating if present, otherwise output to standard output" in
@@ -952,7 +943,7 @@ module What = struct
     let info = Cmd.info "what" ~doc in
     let term =
       Term.(
-          const (fun names verbose -> Recipients.list_recipient_secrets ~verbose names) $ recipient_name $ Flags.verbose)
+        const (fun names verbose -> Recipients.list_recipient_secrets ~verbose names) $ recipient_name $ Flags.verbose)
     in
     Cmd.v info term
 end

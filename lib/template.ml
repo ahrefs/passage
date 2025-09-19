@@ -37,8 +37,7 @@ let substitute ~template ?(file_out = None) () =
   let substituted_ast = List.map substitute_iden template in
   let contents = build_text_from_ast substituted_ast in
   match file_out with
-  | None ->
-    print_string contents
+  | None -> print_string contents
   | Some target_file ->
     Devkit.Files.save_as (Path.project target_file) ~mode:0o600 (fun oc -> Out_channel.output_string oc contents)
 

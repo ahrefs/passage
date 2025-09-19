@@ -15,50 +15,68 @@ let check_process_status raw_cmd status =
 let exec ?stdin ?stdout ?stderr raw_cmd_fmt =
   ksprintf
     (fun raw_cmd ->
-      let status =
-        match stdin, stdout, stderr with
-        | None, None, None -> Unix.system raw_cmd
-        | _ ->
-          (* For redirections, we need to use create_process with proper cleanup *)
-          let stdin_fd = match stdin with None -> Unix.stdin | Some ic -> Unix.descr_of_in_channel ic in
-          let stdout_fd = match stdout with None -> Unix.stdout | Some oc -> Unix.descr_of_out_channel oc in
-          let stderr_fd = match stderr with None -> Unix.stderr | Some oc -> Unix.descr_of_out_channel oc in
-          let pid = Unix.create_process "/bin/sh" [|"/bin/sh"; "-c"; raw_cmd|] stdin_fd stdout_fd stderr_fd in
-          let (_, status) = Unix.waitpid [] pid in
+      match stdin, stdout, stderr with
+      | None, None, None ->
+        let cmd = Bos.Cmd.(v "/bin/sh" % "-c" % raw_cmd) in
+        (match Bos.OS.Cmd.run cmd with
+        | Ok () -> ()
+        | Error (`Msg _) ->
+          (* Fall back to original Unix implementation for consistent error messages *)
+          let status = Unix.system ("/bin/sh -c " ^ quote raw_cmd) in
+          check_process_status raw_cmd status)
+      | _ ->
+        let status =
+          let stdin_fd =
+            match stdin with
+            | None -> Unix.stdin
+            | Some ic -> Unix.descr_of_in_channel ic
+          in
+          let stdout_fd =
+            match stdout with
+            | None -> Unix.stdout
+            | Some oc -> Unix.descr_of_out_channel oc
+          in
+          let stderr_fd =
+            match stderr with
+            | None -> Unix.stderr
+            | Some oc -> Unix.descr_of_out_channel oc
+          in
+          let pid = Unix.create_process "/bin/sh" [| "/bin/sh"; "-c"; raw_cmd |] stdin_fd stdout_fd stderr_fd in
+          (* Wait for process with proper error handling *)
+          let rec wait_for_process () =
+            try Unix.waitpid [] pid with Unix.Unix_error (Unix.EINTR, _, _) -> wait_for_process ()
+          in
+          let _, status = wait_for_process () in
           (* Ensure channels are flushed for proper synchronization *)
-          (match stdout with Some oc -> flush oc | None -> ());
-          (match stderr with Some oc -> flush oc | None -> ());
+          (match stdout with
+          | Some oc -> flush oc
+          | None -> ());
+          (match stderr with
+          | Some oc -> flush oc
+          | None -> ());
           status
-      in
-      check_process_status raw_cmd status)
+        in
+        check_process_status raw_cmd status)
     raw_cmd_fmt
 
-(* Reimplementation of Lwt_process.pread and Lwt_process.pread_line that throws exn when command fails to
-   execute properly (https://github.com/ocsigen/lwt/issues/216)
-*)
-let read_sh_cmd_wrapper raw_cmd_fmt read =
+let pread_sh_cmd raw_cmd_fmt =
   ksprintf
     (fun raw_cmd ->
-      let ic = Unix.open_process_in raw_cmd in
-      let result = read ic in
-      let status = Unix.close_process_in ic in
-      check_process_status raw_cmd status;
-      result)
+      (* Use Bos for robust command execution with proper error handling *)
+      let cmd = Bos.Cmd.(v "/bin/sh" % "-c" % raw_cmd) in
+      match Bos.OS.Cmd.(run_out cmd |> to_string) with
+      | Ok output -> output
+      | Error (`Msg err) -> failwith err)
     raw_cmd_fmt
-let pread_sh_cmd raw_cmd_fmt = read_sh_cmd_wrapper raw_cmd_fmt (fun ic ->
-  let buf = Buffer.create 4096 in
-  let chunk = Bytes.create 4096 in
-  let rec loop () =
-    try
-      let n = input ic chunk 0 4096 in
-      if n = 0 then Buffer.contents buf
-      else (
-        Buffer.add_subbytes buf chunk 0 n;
-        loop ())
-    with End_of_file -> Buffer.contents buf
-  in
-  loop ())
-let pread_line_sh_cmd raw_cmd_fmt = read_sh_cmd_wrapper raw_cmd_fmt input_line
+let pread_line_sh_cmd raw_cmd_fmt =
+  ksprintf
+    (fun raw_cmd ->
+      let cmd = Bos.Cmd.(v "/bin/sh" % "-c" % raw_cmd) in
+      match Bos.OS.Cmd.(run_out cmd |> to_lines) with
+      | Ok [] -> ""
+      | Ok (line :: _) -> line
+      | Error (`Msg err) -> failwith err)
+    raw_cmd_fmt
 
 let editor filename =
   let editor = Option.value (Sys.getenv_opt "EDITOR") ~default:"editor" in
