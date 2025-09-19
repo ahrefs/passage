@@ -9,21 +9,23 @@ type prompt_reply =
 let is_TTY = Unix.isatty Unix.stdin
 
 let yesno prompt =
-  let%lwt () = Lwt_io.printf "%s [y/N] " prompt in
-  let%lwt ans = Lwt_io.(read_line stdin) in
+  let () = Printf.printf "%s [y/N] " prompt in
+  let () = flush stdout in
+  let ans = read_line () in
   match ans with
-  | "Y" | "y" -> Lwt.return true
-  | _ -> Lwt.return false
+  | "Y" | "y" -> true
+  | _ -> false
 
 let yesno_tty_check prompt =
   match is_TTY with
-  | false -> Lwt.return NoTTY
+  | false -> NoTTY
   | true ->
-    let%lwt () = Lwt_io.printf "%s [y/N] " prompt in
-    let%lwt ans = Lwt_io.(read_line stdin) in
+    let () = Printf.printf "%s [y/N] " prompt in
+    let () = flush stdout in
+    let ans = read_line () in
     (match ans with
-    | "Y" | "y" -> Lwt.return (TTY true)
-    | _ -> Lwt.return (TTY false))
+    | "Y" | "y" -> TTY true
+    | _ -> TTY false)
 
 let input_help_if_user_input ?(msg = "Please type the secret and then do Ctrl+d twice to terminate input") () =
   match is_TTY with
@@ -63,9 +65,9 @@ let rec input_and_validate_loop ~validate ?initial get_input =
   | Error e ->
     if is_TTY = false then Shell.die "This secret is in an invalid format: %s" e
     else (
-      let%lwt () = Lwt_io.printlf "\nThis secret is in an invalid format: %s" e in
-      if%lwt yesno "Edit again?" then input_and_validate_loop ~validate ~initial:input get_input else Lwt.return_error e)
-  | _ -> Lwt.return_ok secret
+      let () = Printf.printf "\nThis secret is in an invalid format: %s\n" e in
+      if yesno "Edit again?" then input_and_validate_loop ~validate ~initial:input get_input else Error e)
+  | _ -> Ok secret
 
 (** Gets and validates user input reading from stdin. If the input has the wrong format, the user
     is prompted to reinput the secret with the correct format. Allows passing in a function for input

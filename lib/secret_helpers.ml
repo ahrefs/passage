@@ -2,8 +2,8 @@
 
 (** Decrypt and parse a secret in one operation *)
 let decrypt_and_parse ?(silence_stderr = false) secret_name =
-  let%lwt plaintext = Storage.Secrets.decrypt_exn ~silence_stderr secret_name in
-  Lwt.return (Secret.Validation.parse_exn plaintext)
+  let plaintext = Storage.Secrets.decrypt_exn ~silence_stderr secret_name in
+  Secret.Validation.parse_exn plaintext
 
 (** Reconstruct a secret from parsed secret and new comments *)
 let reconstruct_secret ~comments { Secret.kind; text; _ } =

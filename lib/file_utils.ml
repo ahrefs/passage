@@ -39,12 +39,12 @@ let with_secure_tmpfile suffix f =
 (* make sure they really meant to exit without saving. But this is going to mess
  * up if an editor never cleanly exits. *)
 let rec edit_loop tmpfile =
-  let%lwt had_exception = try%lwt Lwt.map (fun () -> false) (Shell.editor tmpfile) with _ -> Lwt.return true in
+  let had_exception = try Shell.editor tmpfile; false with _ -> true in
   if had_exception then (
-    match%lwt Prompt.yesno "Editor was exited without saving successfully, try again?" with
+    match Prompt.yesno "Editor was exited without saving successfully, try again?" with
     | true -> edit_loop tmpfile
-    | false -> Lwt.return false)
-  else Lwt.return true
+    | false -> false)
+  else true
 
 let new_text_from_editor ?(initial = "") ?(name = "new") () =
   with_secure_tmpfile name (fun (tmpfile, tmpfile_oc) ->

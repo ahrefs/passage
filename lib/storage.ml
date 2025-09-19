@@ -219,67 +219,75 @@ module Secrets = struct
     let tmpfile, tmpfile_oc =
       Filename.open_temp_file ~mode:[ Open_creat; Open_wronly; Open_trunc ] ~perms:0o644 ~temp_dir "" tmpfile_suffix
     in
-    let tmpfile_fd = Unix.descr_of_out_channel tmpfile_oc in
-    let%lwt () = encrypt_to_stdout ~stdout:(`FD_move tmpfile_fd) in
-    FileUtil.mv tmpfile (Path.project secret_file);
-    Lwt.return_unit
+    let () = encrypt_to_stdout ~stdout:tmpfile_oc in
+    close_out tmpfile_oc;
+    FileUtil.mv tmpfile (Path.project secret_file)
 
   let encrypt_exn ~plaintext ~secret_name recipients =
-    let%lwt () = encrypt_using_tmpfile ~secret_name ~encrypt_to_stdout:(Age.encrypt_to_stdout ~recipients ~plaintext) in
-    Lwt.return_unit
+    let () = encrypt_using_tmpfile ~secret_name ~encrypt_to_stdout:(Age.encrypt_to_stdout ~recipients ~plaintext) in
+    ()
 
   let decrypt_exn ?(silence_stderr = false) secret_name =
     let secret_file = Path.(project @@ abs @@ agefile_of_name secret_name) in
     let fd = Unix.openfile secret_file [ O_RDONLY ] 0o400 in
-    Age.decrypt_from_stdin ~identity_file:!!Config.identity_file ~stdin:(`FD_move fd) ~silence_stderr
+    let stdin_channel = Unix.in_channel_of_descr fd in
+    let result = Age.decrypt_from_stdin ~identity_file:!!Config.identity_file ~stdin:stdin_channel ~silence_stderr in
+    close_in stdin_channel;
+    result
 
   let refresh' ?(force = false) secret_name self_key =
     match force || is_recipient_of_secret self_key secret_name with
-    | false -> Lwt.return Skipped
+    | false -> Skipped
     | true ->
-      (try%lwt
+      (try
          let fd_r, fd_w = Unix.pipe () in
-         let%lwt () =
+         let () =
            let secret_file = Path.abs @@ agefile_of_name secret_name in
            let secret_fd = Unix.openfile (Path.project secret_file) [ O_RDONLY ] 0o400 in
-           Age.decrypt_from_stdin_to_stdout ~identity_file:!!Config.identity_file ~stdin:(`FD_move secret_fd)
-             ~silence_stderr:false ~stdout:(`FD_move fd_w)
+           let stdin_channel = Unix.in_channel_of_descr secret_fd in
+           let stdout_channel = Unix.out_channel_of_descr fd_w in
+           Age.decrypt_from_stdin_to_stdout ~identity_file:!!Config.identity_file ~stdin:stdin_channel
+             ~silence_stderr:false ~stdout:stdout_channel;
+           close_in stdin_channel;
+           close_out stdout_channel
          in
-         let%lwt () =
+         let () =
            let recipients = get_recipients_from_path_exn (to_path secret_name) in
+           let stdin_channel = Unix.in_channel_of_descr fd_r in
            encrypt_using_tmpfile ~secret_name
-             ~encrypt_to_stdout:(Age.encrypt_from_stdin_to_stdout ~recipients ~stdin:(`FD_move fd_r))
+             ~encrypt_to_stdout:(Age.encrypt_from_stdin_to_stdout ~recipients ~stdin:stdin_channel);
+           close_in stdin_channel
          in
-         Lwt.return (Succeeded ())
-       with exn -> Lwt.return @@ Failed exn)
+         Succeeded ()
+       with exn -> Failed exn)
 
   let refresh ~verbose ?force secrets =
     let verbose_print fmt =
       ksprintf
         (fun msg ->
           match verbose with
-          | true -> Lwt_io.eprintl msg
-          | false -> Lwt.return_unit)
+          | true -> Printf.eprintf "%s\n" msg
+          | false -> ())
         fmt
     in
-    let%lwt self_key = Age.Key.from_identity_file !!Config.identity_file in
-    let%lwt skipped, refreshed, failed =
-      Lwt_list.fold_left_s
+    let self_key = Age.Key.from_identity_file !!Config.identity_file in
+    let skipped, refreshed, failed =
+      List.fold_left
         (fun (skipped, refreshed, failed) secret ->
           let raw_secret_name = Secret_name.project secret in
-          match%lwt refresh' ?force secret self_key with
+          match refresh' ?force secret self_key with
           | Succeeded () ->
-            let%lwt () = verbose_print "I: refreshed %s" raw_secret_name in
-            Lwt.return (skipped, refreshed + 1, failed)
+            let () = verbose_print "I: refreshed %s" raw_secret_name in
+            (skipped, refreshed + 1, failed)
           | Skipped ->
-            let%lwt () = verbose_print "I: skipped %s" raw_secret_name in
-            Lwt.return (skipped + 1, refreshed, failed)
+            let () = verbose_print "I: skipped %s" raw_secret_name in
+            (skipped + 1, refreshed, failed)
           | Failed exn ->
-            let%lwt () = verbose_print "W: failed to refresh %s : %s" raw_secret_name (Devkit.Exn.to_string exn) in
-            Lwt.return (skipped, refreshed, failed + 1))
+            let () = verbose_print "W: failed to refresh %s : %s" raw_secret_name (Devkit.Exn.to_string exn) in
+            (skipped, refreshed, failed + 1))
         (0, 0, 0) secrets
     in
-    Lwt_io.eprintlf "I: refreshed %d secrets, skipped %d, failed %d" refreshed skipped failed
+    Printf.eprintf "I: refreshed %d secrets, skipped %d, failed %d\n" refreshed skipped failed
 
   let rm ~is_directory path =
     try
@@ -297,28 +305,27 @@ module Secrets = struct
           | _ :: _ -> false, FilePath.add_extension (Path.project absolute_path) ext)
       in
       FileUtil.rm ~recurse [ path_to_delete ];
-      Lwt.return (Succeeded ())
-    with exn -> Lwt.return (Failed exn)
+      Succeeded ()
+    with exn -> Failed exn
 
   let search secret_name pattern =
-    let%lwt self_key = Age.Key.from_identity_file !!Config.identity_file in
+    let self_key = Age.Key.from_identity_file !!Config.identity_file in
     match is_recipient_of_secret self_key secret_name with
-    | false -> Lwt.return Skipped
+    | false -> Skipped
     | true ->
-      (match%lwt decrypt_exn ~silence_stderr:true secret_name with
-      | exception exn -> Lwt.return (Failed exn)
+      (match decrypt_exn ~silence_stderr:true secret_name with
+      | exception exn -> Failed exn
       | content ->
         let matched = Re2.matches pattern content in
-        Lwt.return (Succeeded matched))
+        Succeeded matched)
 
   (** Returns a list with the keys that are recipients for the default identity file *)
   let recipients_of_own_id () =
-    let%lwt own_key = Age.Key.from_identity_file !!Config.identity_file in
-    Lwt.return
-      (Keys.all_recipient_names ()
-      |> List.filter_map (fun name ->
-             let keys = Keys.keys_of_recipient name in
-             match List.mem own_key keys with
-             | true -> Some { Age.name; keys }
-             | false -> None))
+    let own_key = Age.Key.from_identity_file !!Config.identity_file in
+    Keys.all_recipient_names ()
+    |> List.filter_map (fun name ->
+           let keys = Keys.keys_of_recipient name in
+           match List.mem own_key keys with
+           | true -> Some { Age.name; keys }
+           | false -> None)
 end

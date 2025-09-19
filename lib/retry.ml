@@ -1,14 +1,14 @@
 (** Retry utilities for operations that may fail *)
 
-let eprintlf = Lwt_io.eprintlf
+let eprintlf = Printf.eprintf
 
 (** Generic retry function for any operation *)
 let rec retry_with_prompt ~operation ~error_message ~prompt_message =
-  try%lwt operation ()
+  try operation ()
   with exn ->
-    let%lwt () = eprintlf "%s: %s" error_message (Devkit.Exn.to_string exn) in
-    let%lwt () = Lwt_io.(flush stderr) in
-    (match%lwt Prompt.yesno prompt_message with
+    let () = eprintlf "%s: %s\n" error_message (Devkit.Exn.to_string exn) in
+    let () = flush stderr in
+    (match Prompt.yesno prompt_message with
     | false -> Shell.die "E: retry cancelled"
     | true -> retry_with_prompt ~operation ~error_message ~prompt_message)
 

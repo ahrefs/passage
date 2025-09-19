@@ -19,13 +19,13 @@ let error_not_recipient ~op_string path =
 let user_is_listed_as_recipient path =
   let open Storage.Secrets in
   let folder_recipients = get_recipients_from_path_exn path in
-  let%lwt own_recipients = recipients_of_own_id () in
-  Lwt_list.exists_p
-    (fun (own_recipient : Age.recipient) -> Lwt.return @@ List.mem own_recipient folder_recipients)
+  let own_recipients = recipients_of_own_id () in
+  List.exists
+    (fun (own_recipient : Age.recipient) -> List.mem own_recipient folder_recipients)
     own_recipients
 
 let run_if_recipient ~op_string ~path ~f =
-  match%lwt user_is_listed_as_recipient path with
+  match user_is_listed_as_recipient path with
   | false -> error_not_recipient ~op_string path
   | true -> f ()
 
@@ -37,7 +37,7 @@ let die_if_invariant_fails ~op_string path =
   else (
     (* check if i am listed on the .keys file, return early *)
     let base_folder = Path.folder_of_path path in
-    match%lwt user_is_listed_as_recipient path with
+    match user_is_listed_as_recipient path with
     | false -> error_not_recipient ~op_string path
     | true ->
       (* if i am listed on the .keys file, check if i can decrypt all the secrets in the folder *)
