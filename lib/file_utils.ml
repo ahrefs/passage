@@ -36,8 +36,6 @@ let with_secure_tmpfile _suffix f =
   Devkit.Control.with_open_out_temp_file ~temp_dir ~mode:[ Open_wronly; Open_creat; Open_excl ]
     (fun (tmpfile_path, tmpfile_oc) -> f (tmpfile_path, tmpfile_oc))
 
-(* make sure they really meant to exit without saving. But this is going to mess
- * up if an editor never cleanly exits. *)
 let rec edit_loop tmpfile =
   let had_exception =
     try
@@ -51,16 +49,30 @@ let rec edit_loop tmpfile =
     | false -> false)
   else true
 
-let new_text_from_editor ?(initial = "") ?(name = "new") () =
+(* Unified editor abstraction with validation and retry *)
+let edit_with_validation ?(initial = "") ~name ~validate () =
   with_secure_tmpfile name (fun (tmpfile, tmpfile_oc) ->
-      (* Write initial content if provided, but DON'T close the channel here.
-         The with_secure_tmpfile function will close it properly. *)
+      (* Write initial content and close to make available to editor *)
       if initial <> "" then output_string tmpfile_oc initial;
-      flush tmpfile_oc;
-      (* Ensure data is written before editor opens *)
-      (* Don't close tmpfile_oc here - let with_secure_tmpfile handle it *)
-      let () = Shell.editor tmpfile in
-      let ic = open_in tmpfile in
-      let content = In_channel.input_all ic in
-      close_in ic;
-      content)
+      close_out tmpfile_oc;
+
+      match edit_loop tmpfile with
+      | false -> Error "Editor cancelled"
+      | true ->
+        let rec validate_and_edit () =
+          let raw_content = Devkit.Control.with_input_txt tmpfile IO.read_all in
+          let processed_content = Prompt.preprocess_content raw_content in
+          match validate processed_content with
+          | Ok result -> result
+          | Error e ->
+          match Prompt.is_TTY with
+          | false -> Shell.die "%s" e
+          | true ->
+            let () = Printf.printf "\n%s\n" e in
+            (match Prompt.yesno "Edit again?" with
+            | false -> Shell.die "%s" e
+            | true ->
+              let _ = edit_loop tmpfile in
+              validate_and_edit ())
+        in
+        Ok (validate_and_edit ()))

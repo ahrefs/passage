@@ -38,19 +38,6 @@ let add_recipients_if_none_exists recipients secret_path =
     List.iter (fun line -> Printf.fprintf oc "%s\n" line) recipients_names_with_root_group;
     close_out oc
 
-let recipients_validation_once ~validate get_recipients =
-  let input = get_recipients () in
-  (* Parse recipients from input, filtering out comments and empty lines *)
-  let recipients_list =
-    String.split_on_char '\n' input
-    |> List.filter_map (fun line ->
-           let trimmed = String.trim line in
-           if trimmed = "" || String.starts_with ~prefix:"#" trimmed then None else Some trimmed)
-  in
-  match validate recipients_list with
-  | Error e -> if Prompt.is_TTY = false then Shell.die "%s" e else Error e
-  | Ok () -> Ok recipients_list
-
 let rewrite_recipients_file secret_name new_recipients_list =
   let secret_path = Display.path_of_secret_name secret_name in
   let sorted_base_recipients = Storage.Secrets.get_recipients_names secret_path in
@@ -96,31 +83,29 @@ let edit_recipients secret_name =
        else ("# Available groups:" :: List.map (fun g -> "# " ^ g) unused_groups) @ [ "#" ])
     @ if right = [] then [] else "# Available users:" :: List.map (fun r -> "# " ^ r) right
   in
-  File_utils.with_secure_tmpfile (Display.show_name secret_name) (fun (tmpfile, tmpfile_oc) ->
-      (* write and then close to make it available to the editor *)
-      let () = List.iter (fun line -> Printf.fprintf tmpfile_oc "%s\n" line) recipient_lines in
-      let () = close_out tmpfile_oc in
-      if File_utils.edit_loop tmpfile then (
-        let rec validate_and_edit () =
-          let get_recipients_from_file () =
-            let ic = open_in tmpfile in
-            let content = In_channel.input_all ic in
-            close_in ic;
-            content
-          in
-          match
-            recipients_validation_once ~validate:Validation.validate_recipients_for_editing get_recipients_from_file
-          with
-          | Error e ->
-            let () = Printf.printf "\n%s\n" e in
-            if Prompt.yesno "Edit again?" then (
-              let _ = File_utils.edit_loop tmpfile in
-              validate_and_edit ())
-            else Shell.die "%s" e
-          | Ok new_recipients_list -> rewrite_recipients_file secret_name new_recipients_list
-        in
-        validate_and_edit ())
-      else eprintl "E: no recipients provided")
+  let initial_content =
+    match recipient_lines with
+    | [] -> ""
+    | lines -> String.concat "\n" lines ^ "\n"
+  in
+  let validate_recipients content =
+    (* Parse recipients from input, filtering out comments and empty lines *)
+    let recipients_list =
+      String.split_on_char '\n' content
+      |> List.filter_map (fun line ->
+             let trimmed = String.trim line in
+             if trimmed = "" || String.starts_with ~prefix:"#" trimmed then None else Some trimmed)
+    in
+    match Validation.validate_recipients_for_editing recipients_list with
+    | Error e -> Error e
+    | Ok () -> Ok recipients_list
+  in
+  match
+    File_utils.edit_with_validation ~initial:initial_content ~name:(Display.show_name secret_name)
+      ~validate:validate_recipients ()
+  with
+  | Ok new_recipients_list -> rewrite_recipients_file secret_name new_recipients_list
+  | Error _ -> eprintl "E: no recipients provided"
 
 let add_recipients_to_secret secret_name recipients_to_add =
   let secret_path = Display.path_of_secret_name secret_name in

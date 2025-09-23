@@ -4,7 +4,6 @@ open Cmdliner
 open Display
 open Validation
 open Prompt
-open File_utils
 open Recipients
 open Retry
 open Comment_input
@@ -225,11 +224,16 @@ module Edit_cmd = struct
       ~path:Storage.Secrets.(to_path secret_name)
       ~f:(fun () ->
         Edit.edit_secret secret_name ~allow_retry:true ~get_updated_secret:(fun initial ->
-            input_and_validate_loop
-              ~validate:validate_secret
-                (* when we are editing a secret, we know `initial` is Some and we add the format explainer to it *)
-              ?initial:(Option.map (fun i -> i ^ Secret.format_explainer) initial)
-              (new_text_from_editor ~name:(show_name secret_name))))
+            let initial_content =
+              Option.map (fun i -> i ^ Secret.format_explainer) initial |> Option.value ~default:Secret.format_explainer
+            in
+            let validate_and_return_secret content =
+              match validate_secret content with
+              | Ok () -> Ok content
+              | Error e -> Error ("This secret is in an invalid format: " ^ e)
+            in
+            File_utils.edit_with_validation ~initial:initial_content ~name:(show_name secret_name)
+              ~validate:validate_and_return_secret ()))
 
   let edit =
     let doc = "edit the contents of the specified secret" in
@@ -620,9 +624,14 @@ module New = struct
   let create_new_secret verbose secret_name =
     let () =
       Edit.edit_secret ~verbose ~self_fallback:true secret_name ~allow_retry:true ~get_updated_secret:(fun initial ->
-          input_and_validate_loop ~validate:validate_secret
-            ~initial:(Option.value ~default:Secret.format_explainer initial)
-            (new_text_from_editor ~name:(show_name secret_name)))
+          let initial_content = Option.value ~default:Secret.format_explainer initial in
+          let validate_and_return_secret content =
+            match validate_secret content with
+            | Ok () -> Ok content
+            | Error e -> Error ("This secret is in an invalid format: " ^ e)
+          in
+          File_utils.edit_with_validation ~initial:initial_content ~name:(show_name secret_name)
+            ~validate:validate_and_return_secret ())
     in
     let original_recipients = Storage.Secrets.(get_recipients_from_path_exn @@ to_path secret_name) in
     Edit.show_recipients_notice_if_true (original_recipients = []);

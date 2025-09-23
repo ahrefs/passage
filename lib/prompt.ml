@@ -44,10 +44,11 @@ let read_input_from_stdin ?initial:_ () =
   in
   loop ()
 
-let rec input_and_validate_loop ~validate ?initial get_input =
+(* Content preprocessing - removes bash comments and trailing newlines *)
+let preprocess_content input =
   let remove_trailing_newlines s =
     (* reverse the string and count leading newlines instead of traversing the string
-       multiple times to remove trailing newlines *)
+       multiple times to remove trailing newlines. Exit early if we find a non-newline character. *)
     let rev_s =
       let chars = List.of_seq (String.to_seq s) in
       String.of_seq (List.to_seq (List.rev chars))
@@ -63,14 +64,15 @@ let rec input_and_validate_loop ~validate ?initial get_input =
     let new_length = String.length s - trailing_newlines in
     if new_length <= 0 then "" else String.sub s 0 new_length
   in
+  (* Remove bash commented lines from the secret and any trailing newlines, but keep leading newlines *)
+  String.split_on_char '\n' input
+  |> List.filter (fun line -> not (String.starts_with ~prefix:"#" line))
+  |> String.concat "\n"
+  |> remove_trailing_newlines
+
+let rec input_and_validate_loop ~validate ?initial get_input =
   let input = get_input ?initial () in
-  (* Remove bash commented lines from the secret and any trailing newlines *)
-  let secret =
-    String.split_on_char '\n' input
-    |> List.filter (fun line -> not (String.starts_with ~prefix:"#" line))
-    |> String.concat "\n"
-    |> remove_trailing_newlines
-  in
+  let secret = preprocess_content input in
   match validate secret with
   | Error e ->
     if is_TTY = false then Shell.die "This secret is in an invalid format: %s" e

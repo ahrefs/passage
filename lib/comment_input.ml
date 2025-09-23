@@ -1,5 +1,4 @@
 open Validation
-open File_utils
 open Prompt
 
 let get_comments_from_stdin ?(help_message = None) ?(error_prefix = "E:") () =
@@ -15,10 +14,18 @@ let get_comments_from_stdin ?(help_message = None) ?(error_prefix = "E:") () =
   | Ok () -> new_comments
 
 let get_comments_from_editor ?initial ~name ?(error_prefix = "E:") () =
-  let new_comments = input_and_validate_loop ~validate:validate_comments ?initial (new_text_from_editor ~name) in
-  match new_comments with
+  let validate_and_return_comments content =
+    let content = String.trim content in
+    match validate_comments content with
+    | Ok () -> Ok content
+    | Error e -> Error e
+  in
+  match
+    File_utils.edit_with_validation ~initial:(Option.value ~default:"" initial) ~name
+      ~validate:validate_and_return_comments ()
+  with
+  | Ok comments -> comments
   | Error e -> Shell.die "%s %s" error_prefix e
-  | Ok comments -> String.trim comments
 
 let get_comments ?initial ~name ?(help_message = None) ?(error_prefix = "E:") () =
   match is_TTY with
