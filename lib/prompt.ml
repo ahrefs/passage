@@ -27,7 +27,9 @@ let yesno_tty_check prompt =
 
 let input_help_if_user_input ?(msg = "Please type the secret and then do Ctrl+d twice to terminate input") () =
   match is_TTY with
-  | true -> Printf.printf "I: reading from stdin. %s\n" msg
+  | true ->
+    Printf.printf "I: reading from stdin. %s\n" msg;
+    flush stdout
   | false -> ()
 
 let read_input_from_stdin ?initial:_ () =

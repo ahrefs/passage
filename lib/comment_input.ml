@@ -15,10 +15,9 @@ let get_comments_from_stdin ?(help_message = None) ?(error_prefix = "E:") () =
 
 let get_comments_from_editor ?initial ~name ?(error_prefix = "E:") () =
   let validate_and_return_comments content =
-    let content = String.trim content in
     match validate_comments content with
     | Ok () -> Ok content
-    | Error e -> Error e
+    | Error e -> Error (Printf.sprintf "%s this comment is in an invalid format: %s" error_prefix e)
   in
   match
     File_utils.edit_with_validation ~initial:(Option.value ~default:"" initial) ~name

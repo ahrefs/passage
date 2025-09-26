@@ -230,7 +230,7 @@ module Edit_cmd = struct
             let validate_and_return_secret content =
               match validate_secret content with
               | Ok () -> Ok content
-              | Error e -> Error ("This secret is in an invalid format: " ^ e)
+              | Error e -> Error ("E: this secret is in an invalid format: " ^ e)
             in
             File_utils.edit_with_validation ~initial:initial_content ~name:(show_name secret_name)
               ~validate:validate_and_return_secret ()))
@@ -628,7 +628,7 @@ module New = struct
           let validate_and_return_secret content =
             match validate_secret content with
             | Ok () -> Ok content
-            | Error e -> Error ("This secret is in an invalid format: " ^ e)
+            | Error e -> Error ("E: this secret is in an invalid format: " ^ e)
           in
           File_utils.edit_with_validation ~initial:initial_content ~name:(show_name secret_name)
             ~validate:validate_and_return_secret ())
