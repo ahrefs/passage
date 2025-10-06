@@ -19,7 +19,7 @@ Should handle template with no substitutions
 Should fail for non-existent secret
   $ passage subst "Missing: {{{non/existent}}}"
   E: could not decrypt secret non/existent
-  E: failed to substitute : Unix_error open($TESTCASE_ROOT/fixtures/secrets/non/existent.age) No such file or directory
+  E: failed to substitute : Sys_error("$TESTCASE_ROOT/fixtures/secrets/non/existent.age: No such file or directory")
   [1]
 
 Should handle complex template with mixed content

@@ -212,52 +212,34 @@ module Secrets = struct
   (* Outputs encrypted text to a tmpfile first, before replacing the secret (if it already exists)
      with the tmpfile. This is to handle exceptional situations where the encryption is interrupted halfway.
   *)
-  let encrypt_using_tmpfile ~secret_name ~encrypt_to_stdout =
+  let encrypt_using_tmpfile ~secret_name ~plaintext ~recipients =
     let secret_file = Path.abs @@ agefile_of_name secret_name in
+    let encrypted_content = Age.encrypt_string ~recipients plaintext in
     let temp_dir = secret_file |> Path.ensure_parent |> Path.project in
     let tmpfile_suffix = sprintf ".%s.tmp" Path.(basename secret_file |> project) in
     let tmpfile, tmpfile_oc =
       Filename.open_temp_file ~mode:[ Open_creat; Open_wronly; Open_trunc ] ~perms:0o644 ~temp_dir "" tmpfile_suffix
     in
-    let () = encrypt_to_stdout ~stdout:tmpfile_oc in
+    let () = output_string tmpfile_oc encrypted_content in
     close_out tmpfile_oc;
     FileUtil.mv tmpfile (Path.project secret_file)
 
-  let encrypt_exn ~plaintext ~secret_name recipients =
-    let () = encrypt_using_tmpfile ~secret_name ~encrypt_to_stdout:(Age.encrypt_to_stdout ~recipients ~plaintext) in
-    ()
+  let encrypt_exn ~plaintext ~secret_name recipients = encrypt_using_tmpfile ~secret_name ~plaintext ~recipients
 
   let decrypt_exn ?(silence_stderr = false) secret_name =
     let secret_file = Path.(project @@ abs @@ agefile_of_name secret_name) in
-    let fd = Unix.openfile secret_file [ O_RDONLY ] 0o400 in
-    let stdin_channel = Unix.in_channel_of_descr fd in
-    let result = Age.decrypt_from_stdin ~identity_file:!!Config.identity_file ~stdin:stdin_channel ~silence_stderr in
-    close_in stdin_channel;
-    result
+    let ciphertext = Devkit.Control.with_input_txt secret_file IO.read_all in
+    Age.decrypt_string ~identity_file:!!Config.identity_file ~silence_stderr ciphertext
 
   let refresh' ?(force = false) secret_name self_key =
     match force || is_recipient_of_secret self_key secret_name with
     | false -> Skipped
     | true ->
     try
-      let fd_r, fd_w = Unix.pipe () in
-      let () =
-        let secret_file = Path.abs @@ agefile_of_name secret_name in
-        let secret_fd = Unix.openfile (Path.project secret_file) [ O_RDONLY ] 0o400 in
-        let stdin_channel = Unix.in_channel_of_descr secret_fd in
-        let stdout_channel = Unix.out_channel_of_descr fd_w in
-        Age.decrypt_from_stdin_to_stdout ~identity_file:!!Config.identity_file ~stdin:stdin_channel
-          ~silence_stderr:false ~stdout:stdout_channel;
-        close_in stdin_channel;
-        close_out stdout_channel
-      in
-      let () =
-        let recipients = get_recipients_from_path_exn (to_path secret_name) in
-        let stdin_channel = Unix.in_channel_of_descr fd_r in
-        encrypt_using_tmpfile ~secret_name
-          ~encrypt_to_stdout:(Age.encrypt_from_stdin_to_stdout ~recipients ~stdin:stdin_channel);
-        close_in stdin_channel
-      in
+      (* Simple decrypt -> re-encrypt flow *)
+      let plaintext = decrypt_exn ~silence_stderr:false secret_name in
+      let recipients = get_recipients_from_path_exn (to_path secret_name) in
+      encrypt_using_tmpfile ~secret_name ~plaintext ~recipients;
       Succeeded ()
     with exn -> Failed exn
 
