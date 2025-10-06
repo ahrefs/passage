@@ -43,13 +43,10 @@ EDIT - should allow everyone to edit an existing secret
   $ PASSAGE_IDENTITY=bobby.bob.key EDITOR=$OVERWRITE_WITH_BYE passage edit 04/secret1
   $ PASSAGE_IDENTITY=dobby.dob.key EDITOR=$OVERWRITE_WITH_BYE passage edit 04/secret1
   I: secret unchanged
-  [1]
   $ PASSAGE_IDENTITY=robby.rob.key EDITOR=$OVERWRITE_WITH_BYE passage edit 04/secret1
   I: secret unchanged
-  [1]
   $ PASSAGE_IDENTITY=tommy.tom.key EDITOR=$OVERWRITE_WITH_BYE passage edit 04/secret1
   I: secret unchanged
-  [1]
   $ passage get 04/secret1
   BYE
 

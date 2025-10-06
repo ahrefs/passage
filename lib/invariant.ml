@@ -31,7 +31,7 @@ let die_if_invariant_fails ~op_string path =
   let open Storage.Secrets in
   (* If the secret's folder doesn't exist yet or is empty, there's no invariant to check, allow the operation *)
   let full_path = path |> Path.folder_of_path |> Path.abs in
-  if (not (Path.is_directory full_path)) || FileUtil.ls (Path.project full_path) = [] then ()
+  if (not (Path.is_directory full_path)) || List.is_empty (FileUtil.ls (Path.project full_path)) then ()
   else (
     (* check if i am listed on the .keys file, return early *)
     let base_folder = Path.folder_of_path path in

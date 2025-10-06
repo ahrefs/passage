@@ -91,6 +91,5 @@ EDIT - should allow users of a group to edit an existing secret
   $ PASSAGE_IDENTITY=robby.rob.key EDITOR=$OVERWRITE_WITH_BYE passage edit 03/secret1
   $ PASSAGE_IDENTITY=tommy.tom.key EDITOR=$OVERWRITE_WITH_BYE passage edit 03/secret1
   I: secret unchanged
-  [1]
   $ PASSAGE_IDENTITY=robby.rob.key passage get 03/secret1
   BYE

@@ -57,21 +57,21 @@ If the secret is a staging secret, its only recipient should be @everyone.
     try
       let updated_secret = get_updated_secret original_secret in
       match updated_secret, original_secret with
-      | Ok updated_secret, Some original_secret when updated_secret = original_secret -> Exn.fail "I: secret unchanged"
+      | Ok updated_secret, Some original_secret when updated_secret = original_secret -> eprintl "I: secret unchanged"
       | Error e, _ -> Shell.die "E: %s" e
       | Ok updated_secret, _ ->
         let secret_path = path_of_secret_name secret_name in
         let secret_recipients' = Storage.Secrets.get_recipients_from_path_exn secret_path in
         let secret_recipients =
-          if secret_recipients' = [] && self_fallback then (
+          if List.is_empty secret_recipients' && self_fallback then (
             let own_recipients = Storage.Secrets.recipients_of_own_id () in
             let () = add_recipients_if_none_exists own_recipients secret_path in
             Storage.Secrets.get_recipients_from_path_exn secret_path)
           else secret_recipients'
         in
-        if secret_recipients = [] then Exn.fail "E: no recipients specified for this secret"
+        if List.is_empty secret_recipients then Exn.fail "E: no recipients specified for this secret"
         else (
-          let is_first_secret_in_new_folder = Option.is_none original_secret && secret_recipients' = [] in
+          let is_first_secret_in_new_folder = Option.is_none original_secret && List.is_empty secret_recipients' in
           match allow_retry with
           | true ->
             show_recipients_notice_if_true is_first_secret_in_new_folder;
@@ -200,12 +200,12 @@ module Create = struct
             | Error e -> Shell.die "E: invalid comment format: %s" e
             | Ok () -> Ok (reconstruct_secret ~comments:(Some comment) parsed_secret)))
     in
-    if Storage.Secrets.secret_exists secret_name then
-      Shell.die "E: refusing to create: a secret by that name already exists"
-    else (
+    match Storage.Secrets.secret_exists secret_name with
+    | true -> Shell.die "E: refusing to create: a secret by that name already exists"
+    | false ->
       let path = Storage.Secrets.(to_path secret_name) in
       let () = Invariant.die_if_invariant_fails ~op_string:"create" path in
-      create_new_secret verbose secret_name)
+      create_new_secret verbose secret_name
 
   let create =
     let doc =
@@ -245,11 +245,11 @@ end
 module Edit_who = struct
   let edit_who_with_check secret_name =
     let secret_path = Storage.Secrets.(to_path secret_name) in
-    (match Path.is_directory (Path.abs secret_path), Storage.Secrets.secret_exists_at secret_path with
+    match Path.is_directory (Path.abs secret_path), Storage.Secrets.secret_exists_at secret_path with
     | false, false -> Shell.die "E: no such secret: %s" (Display.show_name secret_name)
-    | _ -> ());
-    let path = Storage.Secrets.(to_path secret_name) in
-    Invariant.run_if_recipient ~op_string:"edit recipients" ~path ~f:(fun () -> edit_recipients secret_name)
+    | _ ->
+      let path = Storage.Secrets.(to_path secret_name) in
+      Invariant.run_if_recipient ~op_string:"edit recipients" ~path ~f:(fun () -> edit_recipients secret_name)
 
   let edit_who =
     let doc =
@@ -269,8 +269,8 @@ module Edit_comments = struct
         let parsed_secret = decrypt_and_parse secret_name in
         let new_comments = get_comments ?initial:parsed_secret.comments ~name:(show_name secret_name) () in
         match parsed_secret.comments, new_comments = "" with
-        | None, true -> Shell.die "I: comments unchanged"
-        | Some old, false when old = new_comments -> Shell.die "I: comments unchanged"
+        | None, true -> eprintl "I: comments unchanged"
+        | Some old, false when old = new_comments -> eprintl "I: comments unchanged"
         | _ ->
           let updated_secret = reconstruct_secret ~comments:(Some new_comments) parsed_secret in
           let secret_recipients = Recipients_helpers.get_recipients_or_die secret_name in
@@ -593,6 +593,7 @@ What should be the name used for your recipient identity?|}
     let term = Term.(const init $ const ()) in
     Cmd.v info term
 end
+
 module List_ = struct
   let list_secrets path =
     let raw_path = show_path path in
@@ -634,7 +635,7 @@ module New = struct
             ~validate:validate_and_return_secret ())
     in
     let original_recipients = Storage.Secrets.(get_recipients_from_path_exn @@ to_path secret_name) in
-    Edit.show_recipients_notice_if_true (original_recipients = []);
+    Edit.show_recipients_notice_if_true (List.is_empty original_recipients);
     if yesno "Edit recipients for this secret?" then edit_recipients secret_name
 
   let create_new_secret' secret_name =

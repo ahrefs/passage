@@ -5,31 +5,27 @@ let shm_check =
     (let shm_dir = Path.inject "/dev/shm" in
      let has_sufficient_perms =
        try
-         Path.access shm_dir [ F_OK; W_OK; X_OK ];
+         Path.access shm_dir [ F_OK; W_OK ];
          true
        with Unix.Unix_error _ -> false
      in
-     let parent =
-       match Path.is_directory shm_dir && has_sufficient_perms with
-       | true -> Some shm_dir
-       | false ->
-       match
-         Prompt.yesno
-           {|Your system does not have /dev/shm, which means that it may
+     match Path.is_directory shm_dir && has_sufficient_perms with
+     | true -> Some shm_dir
+     | false ->
+     match
+       Prompt.yesno
+         {|Your system does not have /dev/shm, which means that it may
 be difficult to entirely erase the temporary non-encrypted
 password file after editing.
 
 Are you sure you would like to continue?|}
-       with
-       | false -> exit 1
-       | true -> None
-     in
-     parent)
+     with
+     | false -> exit 1
+     | true -> None)
 
 let with_secure_tmpfile _suffix f =
-  let parent = Lazy.force shm_check in
   let temp_dir =
-    match parent with
+    match Lazy.force shm_check with
     | Some p -> Display.show_path p
     | None -> Filename.get_temp_dir_name ()
   in
@@ -61,9 +57,9 @@ let edit_with_validation ?(initial = "") ~name ~validate () =
       | true ->
         let rec validate_and_edit () =
           let raw_content = Devkit.Control.with_input_txt tmpfile IO.read_all in
-          let processed_content = Prompt.preprocess_content raw_content in
-          match validate processed_content with
-          | Ok result -> result
+          let plaintext = Prompt.preprocess_content raw_content in
+          match validate plaintext with
+          | Ok r -> r
           | Error e ->
           match Prompt.is_TTY with
           | false -> Shell.die "%s" e

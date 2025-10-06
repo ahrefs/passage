@@ -20,8 +20,7 @@ let yesno_tty_check prompt =
   | true ->
     let () = Printf.printf "%s [y/N] " prompt in
     let () = flush stdout in
-    let ans = read_line () in
-    (match ans with
+    (match read_line () with
     | "Y" | "y" -> TTY true
     | _ -> TTY false)
 
@@ -32,19 +31,7 @@ let input_help_if_user_input ?(msg = "Please type the secret and then do Ctrl+d 
     flush stdout
   | false -> ()
 
-let read_input_from_stdin ?initial:_ () =
-  let buf = Buffer.create 4096 in
-  let chunk = Bytes.create 4096 in
-  let rec loop () =
-    try
-      let n = input stdin chunk 0 4096 in
-      if n = 0 then Buffer.contents buf
-      else (
-        Buffer.add_subbytes buf chunk 0 n;
-        loop ())
-    with End_of_file -> Buffer.contents buf
-  in
-  loop ()
+let read_input_from_stdin ?initial:_ () = IO.read_all (IO.input_channel stdin)
 
 (* Content preprocessing - removes bash comments and trailing newlines *)
 let preprocess_content input =
@@ -76,12 +63,12 @@ let rec input_and_validate_loop ~validate ?initial get_input =
   let input = get_input ?initial () in
   let secret = preprocess_content input in
   match validate secret with
+  | Ok _ -> Ok secret
   | Error e ->
     if is_TTY = false then Shell.die "This secret is in an invalid format: %s" e
     else (
       let () = Printf.printf "\nThis secret is in an invalid format: %s\n" e in
       if yesno "Edit again?" then input_and_validate_loop ~validate ~initial:input get_input else Error e)
-  | _ -> Ok secret
 
 (** Gets and validates user input reading from stdin. If the input has the wrong format, the user
     is prompted to reinput the secret with the correct format. Allows passing in a function for input

@@ -15,10 +15,8 @@ let add_recipients_if_none_exists recipients secret_path =
   | false -> ()
   | true ->
     (* also adds root group by default for all new secrets *)
-    let root_recipients_names = Storage.Secrets.recipients_of_group_name ~map_fn:(fun x -> x) "@root" in
-    (* just a separator line before printing the added recipients *)
-    let () = eprintl "" in
-    let () = eprintlf "I: using recipient group @root for secret %s" (Display.show_path secret_path) in
+    let root_recipients_names = Storage.Secrets.recipients_of_group_name ~map_fn:Fun.id "@root" in
+    let () = eprintlf "\nI: using recipient group @root for secret %s" (Display.show_path secret_path) in
     (* avoid repeating names if the user creating the secret is already in the root group *)
     let recipients_names =
       List.filter_map
@@ -57,29 +55,45 @@ let rewrite_recipients_file secret_name new_recipients_list =
   else eprintl "I: no changes made to the recipients"
 
 let edit_recipients secret_name =
+  (* takes two sorted lists and returns three lists:
+      first is items unique to l1, second is items unique to l2, third is items in both l1 and l2.
+
+      Preserves the order in the outputs *)
+  let diff_intersect_lists l1 r1 =
+    let rec diff accl accr accb left right =
+      match left, right with
+      | [], [] -> List.rev accl, List.rev accr, List.rev accb
+      | [], rh :: rt -> diff accl (rh :: accr) accb [] rt
+      | lh :: lt, [] -> diff (lh :: accl) accr accb lt []
+      | lh :: lt, rh :: rt ->
+        let comp = compare lh rh in
+        if comp < 0 then diff (lh :: accl) accr accb lt right
+        else if comp > 0 then diff accl (rh :: accr) accb left rt
+        else diff accl accr (lh :: accb) lt rt
+    in
+    diff [] [] [] l1 r1
+  in
   let path_to_secret = Display.path_of_secret_name secret_name in
   let sorted_base_recipients =
     try Storage.Secrets.get_recipients_names path_to_secret
     with exn -> Secret_helpers.die_failed_get_recipients ~exn ""
   in
   let recipients_groups, current_recipients_names = sorted_base_recipients |> List.partition Age.is_group_recipient in
-  let left, right, common =
-    List_utils.diff_intersect_lists current_recipients_names (Storage.Keys.all_recipient_names ())
-  in
+  let left, right, common = diff_intersect_lists current_recipients_names (Storage.Keys.all_recipient_names ()) in
   let all_available_groups = Storage.Secrets.all_groups_names () |> List.map (fun g -> "@" ^ g) in
   let unused_groups = List.filter (fun g -> not (List.mem g recipients_groups)) all_available_groups in
   let recipient_lines =
-    (if recipients_groups = [] then [] else ("# Groups " :: recipients_groups) @ [ "" ])
+    (if List.is_empty recipients_groups then [] else ("# Groups " :: recipients_groups) @ [ "" ])
     @ ("# Recipients " :: common)
     @ [ "" ]
-    @ (if left = [] then [] else "#" :: "# Warning, unknown recipients below this line " :: "#" :: left)
+    @ (if List.is_empty left then [] else "#" :: "# Warning, unknown recipients below this line " :: "#" :: left)
     @ "#"
       :: "# Uncomment recipients below to add them. You can also add valid groups names if you want."
       :: "#"
       ::
-      (if unused_groups = [] then []
+      (if List.is_empty unused_groups then []
        else ("# Available groups:" :: List.map (fun g -> "# " ^ g) unused_groups) @ [ "#" ])
-    @ if right = [] then [] else "# Available users:" :: List.map (fun r -> "# " ^ r) right
+    @ if List.is_empty right then [] else "# Available users:" :: List.map (fun r -> "# " ^ r) right
   in
   let initial_content =
     match recipient_lines with
@@ -116,12 +130,12 @@ let add_recipients_to_secret secret_name recipients_to_add =
       in
       let current_recipients = Storage.Secrets.get_recipients_names secret_path in
       let new_recipients = List.sort_uniq String.compare (current_recipients @ recipients_to_add) in
-      if current_recipients = new_recipients then
-        eprintl "I: no changes made - all specified recipients are already present"
-      else (
+      match List.equal String.equal current_recipients new_recipients with
+      | true -> eprintl "I: no changes made - all specified recipients are already present"
+      | false ->
         let () = rewrite_recipients_file secret_name new_recipients in
         let added_count = List.length new_recipients - List.length current_recipients in
-        eprintlf "I: added %d recipient%s" added_count (if added_count = 1 then "" else "s")))
+        eprintlf "I: added %d recipient%s" added_count (if added_count = 1 then "" else "s"))
 
 let remove_recipients_from_secret secret_name recipients_to_remove =
   let secret_path = Display.path_of_secret_name secret_name in
@@ -131,22 +145,24 @@ let remove_recipients_from_secret secret_name recipients_to_remove =
       let new_recipients = List.filter (fun r -> not (List.mem r recipients_to_remove)) current_recipients in
       (* Check for non-existent recipients to warn about *)
       let non_existent = List.filter (fun r -> not (List.mem r current_recipients)) recipients_to_remove in
-      if new_recipients = [] then Shell.die "E: cannot remove all recipients - at least one recipient must remain"
+      if List.is_empty new_recipients then
+        Shell.die "E: cannot remove all recipients - at least one recipient must remain"
       else if current_recipients = new_recipients then (
         match non_existent with
         | [] -> eprintl "I: no changes made - specified recipients were already absent"
-        | _ -> eprintlf "W: recipients not found: %s" (String.concat ", " non_existent))
+        | _ -> Shell.die "E: recipients not found: %s" (String.concat ", " non_existent))
       else (
         (* Show warnings for non-existent recipients before proceeding *)
         let () =
-          if non_existent <> [] then eprintlf "W: recipients not found: %s" (String.concat ", " non_existent) else ()
+          if non_existent <> [] then eprintlf "W: recipients not found to remove: %s" (String.concat ", " non_existent)
+          else ()
         in
         let () = rewrite_recipients_file secret_name new_recipients in
         let removed_count = List.length current_recipients - List.length new_recipients in
         eprintlf "I: removed %d recipient%s" removed_count (if removed_count = 1 then "" else "s")))
 
 let list_recipient_secrets ?(verbose = false) recipients_names =
-  if recipients_names = [] then Shell.die "E: Must specify at least one recipient name";
+  if List.is_empty recipients_names then Shell.die "E: Must specify at least one recipient name";
   let number_of_recipients = List.length recipients_names in
   let all_recipient_names = Storage.Keys.all_recipient_names () in
   List.iter

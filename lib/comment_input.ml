@@ -2,11 +2,7 @@ open Validation
 open Prompt
 
 let get_comments_from_stdin ?(help_message = None) ?(error_prefix = "E:") () =
-  let () =
-    match help_message with
-    | None -> ()
-    | Some msg -> input_help_if_user_input ~msg ()
-  in
+  let () = Option.iter (fun msg -> input_help_if_user_input ~msg ()) help_message in
   let new_comments = read_input_from_stdin () in
   let new_comments = String.trim new_comments in
   match validate_comments new_comments with

@@ -86,7 +86,6 @@ Should verify secret content unchanged after failed comment edit
 Should fail - trying to set unchanged comments
   $ echo "restored comment" | passage edit-comments 00/test_secret
   I: comments unchanged
-  [1]
 
 Should fail - edit comments when user is not a recipient
   $ UNAUTHORISED_USER="unauthorised"

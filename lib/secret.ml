@@ -82,7 +82,7 @@ module Validation = struct
               | false, _ -> secret, false)
             ([], false) rest
         in
-        if secret = [] then Error ("multiline: empty secret", MultilineEmptySecret) else Ok Multiline
+        if List.is_empty secret then Error ("multiline: empty secret", MultilineEmptySecret) else Ok Multiline
       (* multi-line without comments *)
       | "" :: "" :: secret :: _ when String.trim secret <> "" -> Ok Multiline
       (* single-line with comments *)
