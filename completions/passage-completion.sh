@@ -100,7 +100,7 @@ _passage_paths_completion() {
 _passage_completions()
 {
   if [ "${#COMP_WORDS[@]}" -le 2 ]; then
-    local cmds="cat create delete edit edit-who get healthcheck init list ls new realpath refresh replace replace-comment rm search secret show subst template template-secrets what who"
+    local cmds="add-who cat create delete edit edit-comments edit-who get healthcheck init list ls my new realpath refresh replace replace-comment rm rm-who search secret show subst template template-secrets what who"
     COMPREPLY=($(compgen -W "$cmds" -- "${COMP_WORDS[1]}"))
   else
     case "${COMP_WORDS[1]}" in
@@ -118,9 +118,16 @@ _passage_completions()
       if [[ $COMP_CWORD == 2 ]]; then
         compopt -o default
       fi;;
-    what)
-      # add autocomplete only for 2nd arg
+    add-who|rm-who)
+      # add autocomplete for 2nd arg (secret name) and subsequent args (recipients)
       if [[ $COMP_CWORD == 2 ]]; then
+        _passage_paths_completion "$(_passage_list_secrets)" "${COMP_WORDS[$COMP_CWORD]}"
+      elif [[ $COMP_CWORD -ge 3 ]]; then
+        COMPREPLY=($(compgen -W "$(_passage_list_recipients)" -- "${COMP_WORDS[$COMP_CWORD]}"))
+      fi;;
+    what)
+      # add autocomplete for multiple recipient args
+      if [[ $COMP_CWORD -ge 2 ]]; then
         COMPREPLY=($(compgen -W "$(_passage_list_recipients)" -- "${COMP_WORDS[$COMP_CWORD]}"))
       fi;;
     who)
