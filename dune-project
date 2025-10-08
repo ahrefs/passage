@@ -24,7 +24,7 @@
  (depends
   bos
   (cmdliner
-   (>= 1.1.0))
+   (= 1.3.0))
   (ocaml
    (>= 4.14))
   conf-age
