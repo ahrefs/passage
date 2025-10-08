@@ -83,17 +83,17 @@ let edit_recipients secret_name =
   let all_available_groups = Storage.Secrets.all_groups_names () |> List.map (fun g -> "@" ^ g) in
   let unused_groups = List.filter (fun g -> not (List.mem g recipients_groups)) all_available_groups in
   let recipient_lines =
-    (if List.is_empty recipients_groups then [] else ("# Groups " :: recipients_groups) @ [ "" ])
+    (if recipients_groups = [] then [] else ("# Groups " :: recipients_groups) @ [ "" ])
     @ ("# Recipients " :: common)
     @ [ "" ]
-    @ (if List.is_empty left then [] else "#" :: "# Warning, unknown recipients below this line " :: "#" :: left)
+    @ (if left = [] then [] else "#" :: "# Warning, unknown recipients below this line " :: "#" :: left)
     @ "#"
       :: "# Uncomment recipients below to add them. You can also add valid groups names if you want."
       :: "#"
       ::
-      (if List.is_empty unused_groups then []
+      (if unused_groups = [] then []
        else ("# Available groups:" :: List.map (fun g -> "# " ^ g) unused_groups) @ [ "#" ])
-    @ if List.is_empty right then [] else "# Available users:" :: List.map (fun r -> "# " ^ r) right
+    @ if right = [] then [] else "# Available users:" :: List.map (fun r -> "# " ^ r) right
   in
   let initial_content =
     match recipient_lines with
@@ -145,8 +145,7 @@ let remove_recipients_from_secret secret_name recipients_to_remove =
       let new_recipients = List.filter (fun r -> not (List.mem r recipients_to_remove)) current_recipients in
       (* Check for non-existent recipients to warn about *)
       let non_existent = List.filter (fun r -> not (List.mem r current_recipients)) recipients_to_remove in
-      if List.is_empty new_recipients then
-        Shell.die "E: cannot remove all recipients - at least one recipient must remain"
+      if new_recipients = [] then Shell.die "E: cannot remove all recipients - at least one recipient must remain"
       else if current_recipients = new_recipients then (
         match non_existent with
         | [] -> eprintl "I: no changes made - specified recipients were already absent"
@@ -162,7 +161,7 @@ let remove_recipients_from_secret secret_name recipients_to_remove =
         eprintlf "I: removed %d recipient%s" removed_count (if removed_count = 1 then "" else "s")))
 
 let list_recipient_secrets ?(verbose = false) recipients_names =
-  if List.is_empty recipients_names then Shell.die "E: Must specify at least one recipient name";
+  if recipients_names = [] then Shell.die "E: Must specify at least one recipient name";
   let number_of_recipients = List.length recipients_names in
   let all_recipient_names = Storage.Keys.all_recipient_names () in
   List.iter

@@ -63,15 +63,15 @@ If the secret is a staging secret, its only recipient should be @everyone.
         let secret_path = path_of_secret_name secret_name in
         let secret_recipients' = Storage.Secrets.get_recipients_from_path_exn secret_path in
         let secret_recipients =
-          if List.is_empty secret_recipients' && self_fallback then (
+          if secret_recipients' = [] && self_fallback then (
             let own_recipients = Storage.Secrets.recipients_of_own_id () in
             let () = add_recipients_if_none_exists own_recipients secret_path in
             Storage.Secrets.get_recipients_from_path_exn secret_path)
           else secret_recipients'
         in
-        if List.is_empty secret_recipients then Exn.fail "E: no recipients specified for this secret"
+        if secret_recipients = [] then Exn.fail "E: no recipients specified for this secret"
         else (
-          let is_first_secret_in_new_folder = Option.is_none original_secret && List.is_empty secret_recipients' in
+          let is_first_secret_in_new_folder = Option.is_none original_secret && secret_recipients' = [] in
           match allow_retry with
           | true ->
             show_recipients_notice_if_true is_first_secret_in_new_folder;
@@ -635,7 +635,7 @@ module New = struct
             ~validate:validate_and_return_secret ())
     in
     let original_recipients = Storage.Secrets.(get_recipients_from_path_exn @@ to_path secret_name) in
-    Edit.show_recipients_notice_if_true (List.is_empty original_recipients);
+    Edit.show_recipients_notice_if_true (original_recipients = []);
     if yesno "Edit recipients for this secret?" then edit_recipients secret_name
 
   let create_new_secret' secret_name =
