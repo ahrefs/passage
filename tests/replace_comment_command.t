@@ -53,7 +53,7 @@ Should succeed - replacing multiline comments with multiline comments - in multi
 
 Should fail - comments with empty lines in the middle
   $ echo "uno commento\n\ndos commentos" | passage replace-comment 00/secret1
-  The comments are in an invalid format: empty lines are not allowed in the middle of the comments
+  E: empty lines are not allowed in the middle of the comments
   [1]
   $ passage cat 00/secret1
   (00/secret1) secret: single line

@@ -5,19 +5,19 @@ open Printf
 (** Validate secret format using Secret.Validation module *)
 let validate_secret secret =
   match Secret.Validation.validate secret with
-  | Error (e, _typ) -> Error e
-  | _ -> Ok ()
+  | Error (e, _typ) -> Error ("E: this secret is in an invalid format: " ^ e)
+  | _ -> Ok secret
 
 (** Validate comment format - no empty lines allowed in the middle *)
 let validate_comments comments =
   match String.trim comments with
   | "" ->
     (* empty comments are allowed *)
-    Ok ()
+    Ok ""
   | comments ->
-    let has_empty_lines = String.split_on_char '\n' comments |> List.map String.trim |> List.mem "" in
+    let has_empty_lines = String.split_on_char '\n' comments |> List.mem "" in
     (match has_empty_lines with
-    | false -> Ok ()
+    | false -> Ok comments
     | true -> Error "empty lines are not allowed in the middle of the comments")
 
 (** Validate recipients list against known recipients and groups *)

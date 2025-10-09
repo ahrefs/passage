@@ -23,31 +23,25 @@ Are you sure you would like to continue?|}
      | false -> exit 1
      | true -> None)
 
-let with_secure_tmpfile _suffix f =
+let with_secure_tmpfile f =
   let temp_dir =
     match Lazy.force shm_check with
     | Some p -> Display.show_path p
     | None -> Filename.get_temp_dir_name ()
   in
-  Devkit.Control.with_open_out_temp_file ~temp_dir ~mode:[ Open_wronly; Open_creat; Open_excl ]
-    (fun (tmpfile_path, tmpfile_oc) -> f (tmpfile_path, tmpfile_oc))
+  Devkit.Control.with_open_out_temp_file ~temp_dir ~mode:[ Open_wronly; Open_creat; Open_excl ] f
 
 let rec edit_loop tmpfile =
-  let had_exception =
-    try
-      Shell.editor tmpfile;
-      false
-    with _ -> true
-  in
-  if had_exception then (
-    match Prompt.yesno "Editor was exited without saving successfully, try again?" with
-    | true -> edit_loop tmpfile
-    | false -> false)
-  else true
+  try
+    Shell.editor tmpfile;
+    true
+  with
+  | _ when Prompt.yesno "Editor was exited without saving successfully, try again?" -> edit_loop tmpfile
+  | _ -> false
 
 (* Unified editor abstraction with validation and retry *)
-let edit_with_validation ?(initial = "") ~name ~validate () =
-  with_secure_tmpfile name (fun (tmpfile, tmpfile_oc) ->
+let edit_with_validation ?(initial = "") ~validate () =
+  with_secure_tmpfile (fun (tmpfile, tmpfile_oc) ->
       (* Write initial content and close to make available to editor *)
       if initial <> "" then output_string tmpfile_oc initial;
       close_out tmpfile_oc;
@@ -56,9 +50,7 @@ let edit_with_validation ?(initial = "") ~name ~validate () =
       | false -> Error "Editor cancelled"
       | true ->
         let rec validate_and_edit () =
-          let raw_content = Devkit.Control.with_input_txt tmpfile IO.read_all in
-          let plaintext = Prompt.preprocess_content raw_content in
-          match validate plaintext with
+          match validate @@ Prompt.preprocess_content @@ Std.input_file tmpfile with
           | Ok r -> r
           | Error e ->
           match Prompt.is_TTY with

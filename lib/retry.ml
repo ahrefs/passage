@@ -1,13 +1,10 @@
 (** Retry utilities for operations that may fail *)
 
-let eprintlf = Printf.eprintf
-
 (** Generic retry function for any operation *)
 let rec retry_with_prompt ~operation ~error_message ~prompt_message =
   try operation ()
   with exn ->
-    let () = eprintlf "%s: %s\n" error_message (Devkit.Exn.to_string exn) in
-    let () = flush stderr in
+    let () = Devkit.eprintfn "%s: %s" error_message (Devkit.Exn.to_string exn) in
     (match Prompt.yesno prompt_message with
     | false -> Shell.die "E: retry cancelled"
     | true -> retry_with_prompt ~operation ~error_message ~prompt_message)

@@ -16,12 +16,7 @@ type output_mode =
   | QrCode
   | Stdout
 
-let eprintl s =
-  Printf.eprintf "%s\n" s;
-  flush stderr
-let eprintlf = Printf.eprintf
-
-let verbose_eprintlf ?(verbose = false) fmt = if verbose then ksprintf eprintl fmt else ksprintf (fun _ -> ()) fmt
+let verbose_eprintlf ?(verbose = false) fmt = if verbose then Devkit.eprintfn fmt else ksprintf (fun _ -> ()) fmt
 
 module Encrypt = struct
   let encrypt_exn ?(verbose = false) ~plaintext ~secret_name recipients =
@@ -57,7 +52,8 @@ If the secret is a staging secret, its only recipient should be @everyone.
     try
       let updated_secret = get_updated_secret original_secret in
       match updated_secret, original_secret with
-      | Ok updated_secret, Some original_secret when updated_secret = original_secret -> eprintl "I: secret unchanged"
+      | Ok updated_secret, Some original_secret when updated_secret = original_secret ->
+        prerr_endline "I: secret unchanged"
       | Error e, _ -> Shell.die "E: %s" e
       | Ok updated_secret, _ ->
         let secret_path = path_of_secret_name secret_name in
@@ -198,7 +194,7 @@ module Create = struct
             in
             (match validate_comments comment with
             | Error e -> Shell.die "E: invalid comment format: %s" e
-            | Ok () -> Ok (reconstruct_secret ~comments:(Some comment) parsed_secret)))
+            | Ok c -> Ok (reconstruct_secret ~comments:(Some c) parsed_secret)))
     in
     match Storage.Secrets.secret_exists secret_name with
     | true -> Shell.die "E: refusing to create: a secret by that name already exists"
@@ -227,13 +223,7 @@ module Edit_cmd = struct
             let initial_content =
               Option.map (fun i -> i ^ Secret.format_explainer) initial |> Option.value ~default:Secret.format_explainer
             in
-            let validate_and_return_secret content =
-              match validate_secret content with
-              | Ok () -> Ok content
-              | Error e -> Error ("E: this secret is in an invalid format: " ^ e)
-            in
-            File_utils.edit_with_validation ~initial:initial_content ~name:(show_name secret_name)
-              ~validate:validate_and_return_secret ()))
+            File_utils.edit_with_validation ~initial:initial_content ~validate:validate_secret ()))
 
   let edit =
     let doc = "edit the contents of the specified secret" in
@@ -246,7 +236,7 @@ module Edit_who = struct
   let edit_who_with_check secret_name =
     let secret_path = Storage.Secrets.(to_path secret_name) in
     match Path.is_directory (Path.abs secret_path), Storage.Secrets.secret_exists_at secret_path with
-    | false, false -> Shell.die "E: no such secret: %s" (Display.show_name secret_name)
+    | false, false -> Shell.die "E: no such secret: %s" (show_name secret_name)
     | _ ->
       let path = Storage.Secrets.(to_path secret_name) in
       Invariant.run_if_recipient ~op_string:"edit recipients" ~path ~f:(fun () -> edit_recipients secret_name)
@@ -267,10 +257,10 @@ module Edit_comments = struct
     let path = Storage.Secrets.(to_path secret_name) in
     Invariant.run_if_recipient ~op_string:"edit comments" ~path ~f:(fun () ->
         let parsed_secret = decrypt_and_parse secret_name in
-        let new_comments = get_comments ?initial:parsed_secret.comments ~name:(show_name secret_name) () in
+        let new_comments = get_comments ?initial:parsed_secret.comments () in
         match parsed_secret.comments, new_comments = "" with
-        | None, true -> eprintl "I: comments unchanged"
-        | Some old, false when old = new_comments -> eprintl "I: comments unchanged"
+        | None, true -> prerr_endline "I: comments unchanged"
+        | Some old, false when old = new_comments -> prerr_endline "I: comments unchanged"
         | _ ->
           let updated_secret = reconstruct_secret ~comments:(Some new_comments) parsed_secret in
           let secret_recipients = Recipients_helpers.get_recipients_or_die secret_name in
@@ -336,7 +326,7 @@ module Get = struct
         match save_to_clipboard_exn ~secret with
         | `Child -> ()
         | `Forked _ ->
-          eprintlf "Copied %s to clipboard. Will clear in %d seconds." (show_name secret_name) Config.clip_time
+          Devkit.eprintfn "Copied %s to clipboard. Will clear in %d seconds." (show_name secret_name) Config.clip_time
       with exn -> Shell.die ~exn "E: failed to save to clipboard! Check if you have an X server running."
   end
 
@@ -455,7 +445,7 @@ module Healthcheck = struct
 
   let check_folders_without_keys_file () =
     let () =
-      eprintl
+      prerr_endline
         {|
 
 PASSAGE HEALTHCHECK. Diagnose for common problems
@@ -466,7 +456,7 @@ Checking for folders without .keys file
     in
     let folders_without_keys_file = Storage.Secrets.(all_paths () |> List.filter has_secret_no_keys) in
     match folders_without_keys_file with
-    | [] -> eprintl "\nSUCCESS: secrets all have .keys in the immediate directory"
+    | [] -> prerr_endline "\nSUCCESS: secrets all have .keys in the immediate directory"
     | _ ->
       let () = print_endline "\nERROR: found paths with secrets but no .keys file:" in
       let () = List.iter (fun p -> Printf.eprintf "- %s\n" (show_path p)) folders_without_keys_file in
@@ -476,7 +466,7 @@ Checking for folders without .keys file
   let check_own_secrets_validity verbose upgrade_mode =
     let open Storage in
     let () =
-      eprintl
+      prerr_endline
         {|
 ==========================================================================
 Checking for validity of own secrets. Use -v flag to break down per secret
@@ -512,14 +502,14 @@ Checking for validity of own secrets. Use -v flag to break down per secret
                            let upgraded_secret = reconstruct_secret ~comments:parsed_secret.comments parsed_secret in
                            let recipients = Recipients_helpers.get_recipients_or_die secret_name in
                            Encrypt.encrypt_exn ~verbose:false ~plaintext:upgraded_secret ~secret_name recipients;
-                           eprintlf "I: updated %s" (show_name secret_name);
+                           Devkit.eprintfn "I: updated %s" (show_name secret_name);
                            1
                          with exn ->
                            Printf.eprintf "E: encrypting %s failed: %s\n" (show_name secret_name)
                              (Printexc.to_string exn);
                            0)
                       | DryRun, SingleLineLegacy ->
-                        eprintlf "I: would update %s" (show_name secret_name);
+                        Devkit.eprintfn "I: would update %s" (show_name secret_name);
                         1
                       | NoUpgrade, _ | Upgrade, _ | DryRun, _ -> 0
                     in
@@ -571,9 +561,8 @@ The location of these can be overriden using environment variables. Please check
 
 What should be the name used for your recipient identity?|}
       in
-      let user_name = read_input_from_stdin () in
       let user_name =
-        String.trim user_name
+        String.trim @@ In_channel.input_all stdin
         |> ExtString.String.replace_chars (fun c ->
                match c with
                | ' ' -> "_"
@@ -626,13 +615,7 @@ module New = struct
     let () =
       Edit.edit_secret ~verbose ~self_fallback:true secret_name ~allow_retry:true ~get_updated_secret:(fun initial ->
           let initial_content = Option.value ~default:Secret.format_explainer initial in
-          let validate_and_return_secret content =
-            match validate_secret content with
-            | Ok () -> Ok content
-            | Error e -> Error ("E: this secret is in an invalid format: " ^ e)
-          in
-          File_utils.edit_with_validation ~initial:initial_content ~name:(show_name secret_name)
-            ~validate:validate_and_return_secret ())
+          File_utils.edit_with_validation ~initial:initial_content ~validate:validate_secret ())
     in
     let original_recipients = Storage.Secrets.(get_recipients_from_path_exn @@ to_path secret_name) in
     Edit.show_recipients_notice_if_true (original_recipients = []);
@@ -710,7 +693,7 @@ module Replace = struct
         let () = input_help_if_user_input () in
         (* We don't need to run validation for the input here since we will be replacing only the secret
             and not the whole file *)
-        let new_secret_plaintext = read_input_from_stdin () in
+        let new_secret_plaintext = In_channel.input_all stdin in
         if new_secret_plaintext = "" then Shell.die "E: invalid input, empty secrets are not allowed.";
         let is_singleline_secret =
           (* New secret is single line if doesn't have a newline character or if it has only one,
@@ -774,9 +757,8 @@ module Replace_comments = struct
                 secret_name_str
           in
           let new_comments =
-            get_comments ?initial:original_secret.comments ~name:(show_name secret_name)
-              ~help_message:(Some "Please type the new comments and then do Ctrl+d twice to terminate input")
-              ~error_prefix:"The comments are in an invalid format:" ()
+            get_comments ?initial:original_secret.comments
+              ~help_message:"Please type the new comments and then do Ctrl+d twice to terminate input" ()
           in
           let updated_secret = reconstruct_secret ~comments:(Some new_comments) original_secret in
           (try Encrypt.encrypt_exn ~verbose:false ~plaintext:updated_secret ~secret_name recipients
@@ -799,7 +781,7 @@ module Rm = struct
       (fun path ->
         let is_directory = Path.is_directory (Path.abs path) in
         (match Storage.Secrets.secret_exists_at path, is_directory with
-        | false, false -> Shell.die "E: no secrets exist at %s" (Display.show_path path)
+        | false, false -> Shell.die "E: no secrets exist at %s" (show_path path)
         | _ -> ());
         let string_path = show_path path in
         let rm_result =
@@ -811,7 +793,7 @@ module Rm = struct
         in
         match rm_result with
         | Storage.Secrets.Succeeded () -> verbose_eprintlf ~verbose "I: removed %s" string_path
-        | Skipped -> eprintlf "I: skipped deleting %s" string_path
+        | Skipped -> Devkit.eprintfn "I: skipped deleting %s" string_path
         | Failed exn -> Shell.die "E: failed to delete %s : %s" string_path (Exn.to_string exn))
       paths
 
@@ -841,7 +823,7 @@ module Search = struct
             verbose_eprintlf ~verbose "I: skipped %s" (show_name secret);
             n_skipped + 1, n_failed, n_matched, matched_secrets
           | Failed exn ->
-            eprintlf "W: failed to search %s : %s" (show_name secret) (Exn.to_string exn);
+            Devkit.eprintfn "W: failed to search %s : %s" (show_name secret) (Exn.to_string exn);
             n_skipped, n_failed + 1, n_matched, matched_secrets)
         (0, 0, 0, []) secrets
     in
@@ -874,7 +856,7 @@ module Show = struct
     let path, show_mode =
       match Path.is_directory full_path, Storage.Secrets.secret_exists_at path with
       | false, true -> path, ShowSecret
-      | false, false -> Shell.die "No secrets at this path : %s" (Display.show_path full_path)
+      | false, false -> Shell.die "No secrets at this path : %s" (show_path full_path)
       | true, _ -> path, ShowTree
     in
     match show_mode with
@@ -993,7 +975,7 @@ module Who = struct
       |> print_from_recipient_list
     | false ->
       (match Storage.Secrets.secret_exists_at path || Storage.Secrets.get_secrets_tree path <> [] with
-      | false -> Shell.die "E: no such secret %s" (Display.show_path path)
+      | false -> Shell.die "E: no such secret %s" (show_path path)
       | true -> ());
       (match expand_groups with
       | true ->

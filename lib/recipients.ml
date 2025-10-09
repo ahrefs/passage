@@ -1,14 +1,5 @@
 (** Recipient management utilities *)
-
-let eprintl s =
-  Printf.eprintf "%s\n" s;
-  flush stderr
-let eprintlf fmt =
-  Printf.ksprintf
-    (fun s ->
-      Printf.eprintf "%s\n" s;
-      flush stderr)
-    fmt
+open Display
 
 let add_recipients_if_none_exists recipients secret_path =
   match Storage.Secrets.no_keys_file (Path.dirname secret_path) with
@@ -16,7 +7,7 @@ let add_recipients_if_none_exists recipients secret_path =
   | true ->
     (* also adds root group by default for all new secrets *)
     let root_recipients_names = Storage.Secrets.recipients_of_group_name ~map_fn:Fun.id "@root" in
-    let () = eprintlf "\nI: using recipient group @root for secret %s" (Display.show_path secret_path) in
+    let () = Devkit.eprintfn "\nI: using recipient group @root for secret %s" (show_path secret_path) in
     (* avoid repeating names if the user creating the secret is already in the root group *)
     let recipients_names =
       List.filter_map
@@ -24,7 +15,7 @@ let add_recipients_if_none_exists recipients secret_path =
           match List.mem r.Age.name root_recipients_names with
           | true -> None
           | false ->
-            let () = Printf.eprintf "I: using recipient %s for secret %s\n" r.name (Display.show_path secret_path) in
+            let () = Printf.eprintf "I: using recipient %s for secret %s\n" r.name (show_path secret_path) in
             Some r.name)
         recipients
     in
@@ -32,18 +23,18 @@ let add_recipients_if_none_exists recipients secret_path =
     let recipients_names_with_root_group = "@root" :: (recipients_names |> List.sort String.compare) in
     let recipients_file_path = Storage.Secrets.get_recipients_file_path secret_path in
     let (_ : Path.t) = Path.ensure_parent recipients_file_path in
-    Devkit.Control.with_open_out_txt (Display.show_path recipients_file_path) (fun oc ->
+    Devkit.Control.with_open_out_txt (show_path recipients_file_path) (fun oc ->
         List.iter (fun line -> Printf.fprintf oc "%s\n" line) recipients_names_with_root_group)
 
 let rewrite_recipients_file secret_name new_recipients_list =
-  let secret_path = Display.path_of_secret_name secret_name in
+  let secret_path = path_of_secret_name secret_name in
   let sorted_base_recipients = Storage.Secrets.get_recipients_names secret_path in
   let secret_recipients_file = Storage.Secrets.get_recipients_file_path secret_path in
   let (_ : Path.t) = Path.ensure_parent secret_recipients_file in
   (* Deduplicate and sort recipients *)
   let deduplicated_recipients = List.sort_uniq String.compare new_recipients_list in
   let () =
-    Devkit.Control.with_open_out_txt (Display.show_path secret_recipients_file) (fun oc ->
+    Devkit.Control.with_open_out_txt (show_path secret_recipients_file) (fun oc ->
         List.iter (fun line -> Printf.fprintf oc "%s\n" line) deduplicated_recipients)
   in
   let sorted_updated_recipients_names = Storage.Secrets.get_recipients_names secret_path in
@@ -52,7 +43,7 @@ let rewrite_recipients_file secret_name new_recipients_list =
     (* it might be that we are creating a secret in a new folder and adding new recipients,
        so we have no extra affected secrets. Only refresh if there are affected secrets *)
     if secrets_affected <> [] then Storage.Secrets.refresh ~force:true ~verbose:false secrets_affected else ())
-  else eprintl "I: no changes made to the recipients"
+  else prerr_endline "I: no changes made to the recipients"
 
 let edit_recipients secret_name =
   (* takes two sorted lists and returns three lists:
@@ -73,7 +64,7 @@ let edit_recipients secret_name =
     in
     diff [] [] [] l1 r1
   in
-  let path_to_secret = Display.path_of_secret_name secret_name in
+  let path_to_secret = path_of_secret_name secret_name in
   let sorted_base_recipients =
     try Storage.Secrets.get_recipients_names path_to_secret
     with exn -> Secret_helpers.die_failed_get_recipients ~exn ""
@@ -112,15 +103,12 @@ let edit_recipients secret_name =
     | Error e -> Error e
     | Ok () -> Ok recipients_list
   in
-  match
-    File_utils.edit_with_validation ~initial:initial_content ~name:(Display.show_name secret_name)
-      ~validate:validate_recipients ()
-  with
+  match File_utils.edit_with_validation ~initial:initial_content ~validate:validate_recipients () with
   | Ok new_recipients_list -> rewrite_recipients_file secret_name new_recipients_list
-  | Error _ -> eprintl "E: no recipients provided"
+  | Error _ -> prerr_endline "E: no recipients provided"
 
 let add_recipients_to_secret secret_name recipients_to_add =
-  let secret_path = Display.path_of_secret_name secret_name in
+  let secret_path = path_of_secret_name secret_name in
   Secret_helpers.check_path_exists_or_die secret_name secret_path;
   Invariant.run_if_recipient ~op_string:"add recipients" ~path:secret_path ~f:(fun () ->
       let () =
@@ -131,14 +119,14 @@ let add_recipients_to_secret secret_name recipients_to_add =
       let current_recipients = Storage.Secrets.get_recipients_names secret_path in
       let new_recipients = List.sort_uniq String.compare (current_recipients @ recipients_to_add) in
       match List.equal String.equal current_recipients new_recipients with
-      | true -> eprintl "I: no changes made - all specified recipients are already present"
+      | true -> prerr_endline "I: no changes made - all specified recipients are already present"
       | false ->
         let () = rewrite_recipients_file secret_name new_recipients in
         let added_count = List.length new_recipients - List.length current_recipients in
-        eprintlf "I: added %d recipient%s" added_count (if added_count = 1 then "" else "s"))
+        Devkit.eprintfn "I: added %d recipient%s" added_count (if added_count = 1 then "" else "s"))
 
 let remove_recipients_from_secret secret_name recipients_to_remove =
-  let secret_path = Display.path_of_secret_name secret_name in
+  let secret_path = path_of_secret_name secret_name in
   Secret_helpers.check_path_exists_or_die secret_name secret_path;
   Invariant.run_if_recipient ~op_string:"remove recipients" ~path:secret_path ~f:(fun () ->
       let current_recipients = Storage.Secrets.get_recipients_names secret_path in
@@ -148,17 +136,18 @@ let remove_recipients_from_secret secret_name recipients_to_remove =
       if new_recipients = [] then Shell.die "E: cannot remove all recipients - at least one recipient must remain"
       else if current_recipients = new_recipients then (
         match non_existent with
-        | [] -> eprintl "I: no changes made - specified recipients were already absent"
+        | [] -> prerr_endline "I: no changes made - specified recipients were already absent"
         | _ -> Shell.die "E: recipients not found: %s" (String.concat ", " non_existent))
       else (
         (* Show warnings for non-existent recipients before proceeding *)
         let () =
-          if non_existent <> [] then eprintlf "W: recipients not found to remove: %s" (String.concat ", " non_existent)
+          if non_existent <> [] then
+            Devkit.eprintfn "W: recipients not found to remove: %s" (String.concat ", " non_existent)
           else ()
         in
         let () = rewrite_recipients_file secret_name new_recipients in
         let removed_count = List.length current_recipients - List.length new_recipients in
-        eprintlf "I: removed %d recipient%s" removed_count (if removed_count = 1 then "" else "s")))
+        Devkit.eprintfn "I: removed %d recipient%s" removed_count (if removed_count = 1 then "" else "s")))
 
 let list_recipient_secrets ?(verbose = false) recipients_names =
   if recipients_names = [] then Shell.die "E: Must specify at least one recipient name";
@@ -168,30 +157,31 @@ let list_recipient_secrets ?(verbose = false) recipients_names =
     (fun recipient_name ->
       let open Storage in
       match List.mem recipient_name all_recipient_names, Age.is_group_recipient recipient_name with
-      | false, false -> eprintlf "E: no such recipient %s" recipient_name
+      | false, false -> Devkit.eprintfn "E: no such recipient %s" recipient_name
       | _ ->
       match Secrets.get_secrets_for_recipient recipient_name with
-      | [] -> eprintlf "\nNo secrets found for %s" recipient_name
+      | [] -> Devkit.eprintfn "\nNo secrets found for %s" recipient_name
       | secrets ->
         let () =
-          if number_of_recipients > 1 then eprintlf "\nSecrets which %s is a recipient of:" recipient_name else ()
+          if number_of_recipients > 1 then Devkit.eprintfn "\nSecrets which %s is a recipient of:" recipient_name
+          else ()
         in
         let sorted = List.sort Secret_name.compare secrets in
         let print_secret secret =
           match verbose with
-          | false -> Printf.printf "%s\n" (Display.show_name secret)
+          | false -> Printf.printf "%s\n" (show_name secret)
           | true ->
           try
             let plaintext = Secret_helpers.decrypt_silently secret in
-            Printf.printf "%s\n" (Secret.Validation.validity_to_string (Display.show_name secret) plaintext)
-          with _ -> Printf.printf "🚨 %s [ WARNING: failed to decrypt ]\n" (Display.show_name secret)
+            Printf.printf "%s\n" (Secret.Validation.validity_to_string (show_name secret) plaintext)
+          with _ -> Printf.printf "🚨 %s [ WARNING: failed to decrypt ]\n" (show_name secret)
         in
         let () = List.iter print_secret sorted in
         flush stderr)
     recipients_names
 
 let list_recipients path expand_groups =
-  let string_path = Display.show_path path in
+  let string_path = show_path path in
   let print_from_recipient_list recipients =
     List.iter
       (fun (r : Age.recipient) ->
@@ -207,7 +197,7 @@ let list_recipients path expand_groups =
     |> print_from_recipient_list
   | false ->
   match Storage.Secrets.secret_exists_at path || Storage.Secrets.get_secrets_tree path <> [] with
-  | false -> Shell.die "E: no such secret %s" (Display.show_path path)
+  | false -> Shell.die "E: no such secret %s" (show_path path)
   | true ->
   match expand_groups with
   | true ->
