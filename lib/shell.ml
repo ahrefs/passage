@@ -70,8 +70,8 @@ let age_generate_identity_key_root_group_exn id_name =
   let root_group_file = Filename.concat keys_dir "root.group" in
   FileUtil.touch root_group_file;
   (* create identity file and pub key *)
-  let identity_file = Filename.concat Config.base_dir "identity.key" in
+  let identity_file = quote @@ Filename.concat Config.base_dir "identity.key" in
   let () = run_cmd_stdout "age-keygen -o %s" identity_file in
-  run_cmd_stdout "age-keygen -y %s >> %s/%s.%s" identity_file keys_dir id_name "pub"
+  run_cmd_stdout "age-keygen -y %s >> %s/%s.%s" identity_file (quote keys_dir) (quote id_name) "pub"
 
 let age_get_recipient_key_from_identity_file identity_file = run_cmd_first_line "age-keygen -y %s" (quote identity_file)

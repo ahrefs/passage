@@ -63,7 +63,7 @@ EDIT-WHO - should work as expected
   $ passage get 04/secret1
   age: error: no identity matched any of the recipients
   age: report unexpected or unhelpful errors at https://filippo.io/age/report
-  E: failed to decrypt 04/secret1 : Failure("age --decrypt --identity $TESTCASE_ROOT/bobby.bob.key : exit code 1")
+  E: failed to decrypt 04/secret1 : Failure("age --decrypt --identity '$TESTCASE_ROOT/bobby.bob.key' : exit code 1")
   [1]
   $ PASSAGE_IDENTITY=robby.rob.key passage get 04/secret1
   BYE
