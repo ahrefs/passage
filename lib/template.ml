@@ -15,7 +15,7 @@ let substitute_iden node =
   | Template_ast.Iden name ->
     let secret_name = Storage.Secret_name.inject name in
     (try
-       let plaintext = Secret_helpers.decrypt_silently secret_name in
+       let plaintext = Util.Secret.decrypt_silently secret_name in
        let secret = Secret.Validation.parse_exn plaintext in
        Template_ast.Text secret.text
      with

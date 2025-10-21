@@ -1,13 +1,13 @@
 open Passage
 open Printf
 open Cmdliner
-open Display
 open Validation
 open Prompt
 open Recipients
 open Retry
 open Comment_input
-open Secret_helpers
+open Util.Secret
+open Util.Show
 
 module Exn = Devkit.Exn
 
@@ -215,7 +215,7 @@ end
 
 module Edit_cmd = struct
   let edit secret_name =
-    Secret_helpers.check_exists_or_die secret_name;
+    check_exists_or_die secret_name;
     Invariant.run_if_recipient ~op_string:"edit secret"
       ~path:Storage.Secrets.(to_path secret_name)
       ~f:(fun () ->
@@ -223,7 +223,7 @@ module Edit_cmd = struct
             let initial_content =
               Option.map (fun i -> i ^ Secret.format_explainer) initial |> Option.value ~default:Secret.format_explainer
             in
-            File_utils.edit_with_validation ~initial:initial_content ~validate:validate_secret ()))
+            Util.Editor.edit_with_validation ~initial:initial_content ~validate:validate_secret ()))
 
   let edit =
     let doc = "edit the contents of the specified secret" in
@@ -253,7 +253,7 @@ end
 
 module Edit_comments = struct
   let edit_comments secret_name =
-    Secret_helpers.check_exists_or_die secret_name;
+    check_exists_or_die secret_name;
     let path = Storage.Secrets.(to_path secret_name) in
     Invariant.run_if_recipient ~op_string:"edit comments" ~path ~f:(fun () ->
         let parsed_secret = decrypt_and_parse secret_name in
@@ -263,7 +263,7 @@ module Edit_comments = struct
         | Some old, false when old = new_comments -> prerr_endline "I: comments unchanged"
         | _ ->
           let updated_secret = reconstruct_secret ~comments:(Some new_comments) parsed_secret in
-          let secret_recipients = Recipients_helpers.get_recipients_or_die secret_name in
+          let secret_recipients = Util.Recipients.get_recipients_or_die secret_name in
           (try encrypt_with_retry ~plaintext:updated_secret ~secret_name secret_recipients
            with exn -> Shell.die ~exn "E: encrypting %s failed" (show_name secret_name)))
 
@@ -500,7 +500,7 @@ Checking for validity of own secrets. Use -v flag to break down per secret
                         (try
                            let parsed_secret = Secret.Validation.parse_exn secret_text in
                            let upgraded_secret = reconstruct_secret ~comments:parsed_secret.comments parsed_secret in
-                           let recipients = Recipients_helpers.get_recipients_or_die secret_name in
+                           let recipients = Util.Recipients.get_recipients_or_die secret_name in
                            Encrypt.encrypt_exn ~verbose:false ~plaintext:upgraded_secret ~secret_name recipients;
                            Devkit.eprintfn "I: updated %s" (show_name secret_name);
                            1
@@ -615,7 +615,7 @@ module New = struct
     let () =
       Edit.edit_secret ~verbose ~self_fallback:true secret_name ~allow_retry:true ~get_updated_secret:(fun initial ->
           let initial_content = Option.value ~default:Secret.format_explainer initial in
-          File_utils.edit_with_validation ~initial:initial_content ~validate:validate_secret ())
+          Util.Editor.edit_with_validation ~initial:initial_content ~validate:validate_secret ())
     in
     let original_recipients = Storage.Secrets.(get_recipients_from_path_exn @@ to_path secret_name) in
     Edit.show_recipients_notice_if_true (original_recipients = []);
@@ -686,7 +686,7 @@ end
 
 module Replace = struct
   let replace_secret secret_name =
-    let recipients = Recipients_helpers.get_recipients_or_die secret_name in
+    let recipients = Util.Recipients.get_recipients_or_die secret_name in
     Invariant.run_if_recipient ~op_string:"replace secret"
       ~path:Storage.Secrets.(to_path secret_name)
       ~f:(fun () ->
@@ -741,7 +741,7 @@ end
 module Replace_comments = struct
   let replace_comment secret_name =
     let secret_name_str = show_name secret_name in
-    let recipients = Recipients_helpers.get_recipients_or_die secret_name in
+    let recipients = Util.Recipients.get_recipients_or_die secret_name in
     Invariant.run_if_recipient ~op_string:"replace comments"
       ~path:Storage.Secrets.(to_path secret_name)
       ~f:(fun () ->

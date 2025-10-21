@@ -8,7 +8,7 @@ let get_comments_from_stdin ?help_message () =
   | Error e -> Shell.die "E: %s" e
 
 let get_comments_from_editor ?(initial = "") () =
-  match File_utils.edit_with_validation ~initial ~validate:validate_comments () with
+  match Util.Editor.edit_with_validation ~initial ~validate:validate_comments () with
   | Ok c -> c
   | Error e -> Shell.die "E: %s" e
 

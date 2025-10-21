@@ -1,5 +1,5 @@
 (** Recipient management utilities *)
-open Display
+open Util.Show
 
 let add_recipients_if_none_exists recipients secret_path =
   match Storage.Secrets.no_keys_file (Path.dirname secret_path) with
@@ -66,8 +66,7 @@ let edit_recipients secret_name =
   in
   let path_to_secret = path_of_secret_name secret_name in
   let sorted_base_recipients =
-    try Storage.Secrets.get_recipients_names path_to_secret
-    with exn -> Secret_helpers.die_failed_get_recipients ~exn ""
+    try Storage.Secrets.get_recipients_names path_to_secret with exn -> Util.Secret.die_failed_get_recipients ~exn ""
   in
   let recipients_groups, current_recipients_names = sorted_base_recipients |> List.partition Age.is_group_recipient in
   let left, right, common = diff_intersect_lists current_recipients_names (Storage.Keys.all_recipient_names ()) in
@@ -103,13 +102,13 @@ let edit_recipients secret_name =
     | Error e -> Error e
     | Ok () -> Ok recipients_list
   in
-  match File_utils.edit_with_validation ~initial:initial_content ~validate:validate_recipients () with
+  match Util.Editor.edit_with_validation ~initial:initial_content ~validate:validate_recipients () with
   | Ok new_recipients_list -> rewrite_recipients_file secret_name new_recipients_list
   | Error _ -> prerr_endline "E: no recipients provided"
 
 let add_recipients_to_secret secret_name recipients_to_add =
   let secret_path = path_of_secret_name secret_name in
-  Secret_helpers.check_path_exists_or_die secret_name secret_path;
+  Util.Secret.check_path_exists_or_die secret_name secret_path;
   Invariant.run_if_recipient ~op_string:"add recipients" ~path:secret_path ~f:(fun () ->
       let () =
         match Validation.validate_recipients_for_commands recipients_to_add with
@@ -127,7 +126,7 @@ let add_recipients_to_secret secret_name recipients_to_add =
 
 let remove_recipients_from_secret secret_name recipients_to_remove =
   let secret_path = path_of_secret_name secret_name in
-  Secret_helpers.check_path_exists_or_die secret_name secret_path;
+  Util.Secret.check_path_exists_or_die secret_name secret_path;
   Invariant.run_if_recipient ~op_string:"remove recipients" ~path:secret_path ~f:(fun () ->
       let current_recipients = Storage.Secrets.get_recipients_names secret_path in
       let new_recipients = List.filter (fun r -> not (List.mem r recipients_to_remove)) current_recipients in
@@ -172,7 +171,7 @@ let list_recipient_secrets ?(verbose = false) recipients_names =
           | false -> Printf.printf "%s\n" (show_name secret)
           | true ->
           try
-            let plaintext = Secret_helpers.decrypt_silently secret in
+            let plaintext = Util.Secret.decrypt_silently secret in
             Printf.printf "%s\n" (Secret.Validation.validity_to_string (show_name secret) plaintext)
           with _ -> Printf.printf "🚨 %s [ WARNING: failed to decrypt ]\n" (show_name secret)
         in
@@ -202,12 +201,12 @@ let list_recipients path expand_groups =
   match expand_groups with
   | true ->
     (match Storage.Secrets.get_recipients_from_path_exn path with
-    | exception exn -> Secret_helpers.die_failed_get_recipients ~exn ""
-    | [] -> Secret_helpers.die_no_recipients_found path
+    | exception exn -> Util.Secret.die_failed_get_recipients ~exn ""
+    | [] -> Util.Secret.die_no_recipients_found path
     | recipients -> print_from_recipient_list recipients)
   | false ->
   match Storage.Secrets.get_recipients_names path with
-  | [] -> Secret_helpers.die_no_recipients_found path
+  | [] -> Util.Secret.die_no_recipients_found path
   | recipients_names ->
     List.iter
       (fun recipient_name ->

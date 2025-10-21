@@ -10,7 +10,7 @@ let error_not_recipient ~op_string path =
   let base_folder = Path.folder_of_path path in
   let () =
     Printf.eprintf "E: user is not a recipient of %s. Please ask one of the following to add you as a recipient:\n"
-      (Display.show_path base_folder)
+      (Util.Show.show_path base_folder)
   in
   let expanded_recipients = get_expanded_recipient_names_from_folder base_folder in
   let () = List.iter (Printf.eprintf "  %s\n") expanded_recipients in
@@ -43,14 +43,15 @@ let die_if_invariant_fails ~op_string path =
         List.exists
           (fun s ->
             try
-              let (_decrypted : string) = Secret_helpers.decrypt_silently s in
+              let (_decrypted : string) = Util.Secret.decrypt_silently s in
               false
             with _e ->
               let () =
+                let open Util.Show in
                 Printf.eprintf
                   "E: user is recipient of %s, but failed to decrypt %s. Please ask some user to refresh the whole \
                    folder.\n"
-                  (Display.show_path base_folder) (Display.show_name s)
+                  (show_path base_folder) (show_name s)
               in
               true)
           (get_secrets_in_folder base_folder)
