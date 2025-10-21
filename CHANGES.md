@@ -1,3 +1,13 @@
+## 0.1.8 (2025-10-21)
+- deep refactor of the code
+  - more code moved to the lib, cleaner main.ml file
+  - more abstractions, less indirection
+  - updated the editor for reusability and robustness
+  - removed lwt, since we don't really have true async code
+  - use bos for command running and stdin/stdout/stderr handling
+- removed lwt
+- updated completions (bash and zsh)
+
 ## 0.1.7 (2025-09-15)
 - Add --comment flag to the create command
 - Add edit-comments command
