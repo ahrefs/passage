@@ -68,7 +68,7 @@ Should fail - no identity file
 
 Should fail - no identity file
   $ PASSAGE_IDENTITY=poppy.pop.key passage template $PASSAGE_DIR/templates/multiple_secrets.txt
-  E: failed to substitute file : Failure("unable to decrypt secret: age --decrypt --identity $TESTCASE_ROOT/poppy.pop.key : exit code 1")
+  E: failed to substitute file : Failure("unable to decrypt secret: age --decrypt --identity '$TESTCASE_ROOT/poppy.pop.key' : exit code 1")
   [1]
 
 Should fail - unable to decrypt a secret

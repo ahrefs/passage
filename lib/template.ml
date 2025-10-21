@@ -11,18 +11,18 @@ let parse_file file =
 
 let substitute_iden node =
   match node with
-  | Template_ast.Text _ -> Lwt.return node
+  | Template_ast.Text _ -> node
   | Template_ast.Iden name ->
     let secret_name = Storage.Secret_name.inject name in
-    (try%lwt
-       let%lwt plaintext = Storage.Secrets.decrypt_exn ~silence_stderr:true secret_name in
+    (try
+       let plaintext = Util.Secret.decrypt_silently secret_name in
        let secret = Secret.Validation.parse_exn plaintext in
-       Lwt.return @@ Template_ast.Text secret.text
+       Template_ast.Text secret.text
      with
     | Failure s -> failwith ("unable to decrypt secret: " ^ s)
     | exn ->
-      let%lwt () = Lwt_io.eprintlf "E: could not decrypt secret %s" (Storage.Secret_name.project secret_name) in
-      Lwt.reraise exn)
+      let () = Printf.eprintf "E: could not decrypt secret %s\n" (Storage.Secret_name.project secret_name) in
+      raise exn)
 
 let build_text_from_ast ast =
   List.map
@@ -34,15 +34,12 @@ let build_text_from_ast ast =
   |> String.concat ""
 
 let substitute ~template ?(file_out = None) () =
-  let%lwt substituted_ast = Lwt_list.map_p substitute_iden template in
+  let substituted_ast = List.map substitute_iden template in
   let contents = build_text_from_ast substituted_ast in
   match file_out with
-  | None ->
-    print_string contents;
-    Lwt.return_unit
+  | None -> print_string contents
   | Some target_file ->
-    Devkit.Files.save_as (Path.project target_file) ~mode:0o600 (fun oc -> Out_channel.output_string oc contents);
-    Lwt.return_unit
+    Devkit.Files.save_as (Path.project target_file) ~mode:0o600 (fun oc -> Out_channel.output_string oc contents)
 
 let substitute_file ~template_file ~target_file =
   let template = parse_file template_file in

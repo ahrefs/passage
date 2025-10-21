@@ -1,6 +1,13 @@
 open Passage
 open Printf
 open Cmdliner
+open Validation
+open Prompt
+open Recipients
+open Retry
+open Comment_input
+open Util.Secret
+open Util.Show
 
 module Exn = Devkit.Exn
 
@@ -9,170 +16,16 @@ type output_mode =
   | QrCode
   | Stdout
 
-type verbosity =
-  | Normal
-  | Verbose
-
-let verbosity = ref Normal
-let eprintl = Lwt_io.eprintl
-let eprintlf = Lwt_io.eprintlf
-
-let verbose_eprintlf fmt =
-  ksprintf
-    (fun msg ->
-      match !verbosity with
-      | Verbose -> eprintl msg
-      | Normal -> Lwt.return_unit)
-    fmt
-
-let show_path p = Path.project p
-let show_name name = Storage.Secret_name.project name
-let path_of_secret_name name = show_name name |> Path.inject
-let secret_name_of_path path = show_path path |> Storage.Secrets.build_secret_name
-
-let main_run term = Term.(const Lwt_main.run $ term)
-
-module Prompt = struct
-  type prompt_reply =
-    | NoTTY
-    | TTY of bool
-
-  let is_TTY = Unix.isatty Unix.stdin
-
-  let yesno prompt =
-    let%lwt () = Lwt_io.printf "%s [y/N] " prompt in
-    let%lwt ans = Lwt_io.(read_line stdin) in
-    match ans with
-    | "Y" | "y" -> Lwt.return true
-    | _ -> Lwt.return false
-
-  let yesno_tty_check prompt =
-    match is_TTY with
-    | false -> Lwt.return NoTTY
-    | true ->
-      let%lwt () = Lwt_io.printf "%s [y/N] " prompt in
-      let%lwt ans = Lwt_io.(read_line stdin) in
-      (match ans with
-      | "Y" | "y" -> Lwt.return (TTY true)
-      | _ -> Lwt.return (TTY false))
-
-  let input_help_if_user_input ?(msg = "Please type the secret and then do Ctrl+d twice to terminate input") () =
-    match is_TTY with
-    | true -> Lwt_io.printl @@ sprintf "I: reading from stdin. %s" msg
-    | false -> Lwt.return_unit
-
-  let read_input_from_stdin ?initial:_ () = Lwt_io.(read stdin)
-
-  let validate_secret secret =
-    match Secret.Validation.validate secret with
-    | Error (e, _typ) -> Error e
-    | _ -> Ok ()
-
-  let validate_comments comments =
-    match String.trim comments with
-    | "" ->
-      (* empty comments are allowed *)
-      Ok ()
-    | comments ->
-      let has_empty_lines = String.split_on_char '\n' comments |> List.map String.trim |> List.mem "" in
-      (match has_empty_lines with
-      | false -> Ok ()
-      | true -> Error "empty lines are not allowed in the middle of the comments")
-
-  let rec input_and_validate_loop ~validate ?initial get_input =
-    let remove_trailing_newlines s =
-      (* reverse the string and count leading newlines instead of traversing the string
-         multiple times to remove trailing newlines *)
-      let rev_s =
-        let chars = List.of_seq (String.to_seq s) in
-        String.of_seq (List.to_seq (List.rev chars))
-      in
-      let rec count_leading_newlines ?(acc = 0) ?(i = 0) s =
-        try
-          match s.[i] = '\n' with
-          | true -> count_leading_newlines ~acc:(acc + 1) ~i:(i + 1) s
-          | false -> i
-        with _ -> i
-      in
-      let trailing_newlines = count_leading_newlines rev_s in
-      let new_length = String.length s - trailing_newlines in
-      if new_length <= 0 then "" else String.sub s 0 new_length
-    in
-    let%lwt input = get_input ?initial () in
-    (* Remove bash commented lines from the secret and any trailing newlines *)
-    let secret =
-      String.split_on_char '\n' input
-      |> List.filter (fun line -> not (String.starts_with ~prefix:"#" line))
-      |> String.concat "\n"
-      |> remove_trailing_newlines
-    in
-    match validate secret with
-    | Error e ->
-      if is_TTY = false then Shell.die "This secret is in an invalid format: %s" e
-      else (
-        let%lwt () = Lwt_io.printlf "\nThis secret is in an invalid format: %s" e in
-        if%lwt yesno "Edit again?" then input_and_validate_loop ~validate ~initial:input get_input
-        else Lwt.return_error e)
-    | _ -> Lwt.return_ok secret
-
-  (** Gets and validates user input reading from stdin. If the input has the wrong format, the user
-      is prompted to reinput the secret with the correct format. Allows passing in a function for input
-      transformation. Throws an error if the transformed input doesn't comply with the format and the
-      user doesn't want to fix the input format. *)
-  let get_valid_input_from_stdin_exn ?(validate = validate_secret) () =
-    match%lwt input_and_validate_loop ~validate read_input_from_stdin with
-    | Error e -> Shell.die "This secret is in an invalid format: %s" e
-    | Ok secret -> Lwt.return_ok secret
-end
+let verbose_eprintlf ?(verbose = false) fmt = if verbose then Devkit.eprintfn fmt else ksprintf (fun _ -> ()) fmt
 
 module Encrypt = struct
-  let encrypt_exn ~plaintext ~secret_name recipients =
-    let%lwt () =
-      verbose_eprintlf "I: encrypting %s for %s" (show_name secret_name)
-        (List.map (fun r -> Age.(r.name)) recipients |> String.concat ", ")
-    in
+  let encrypt_exn ?(verbose = false) ~plaintext ~secret_name recipients =
+    verbose_eprintlf ~verbose "I: encrypting %s for %s" (show_name secret_name)
+      (List.map (fun r -> Age.(r.name)) recipients |> String.concat ", ");
     Storage.Secrets.encrypt_exn ~plaintext ~secret_name recipients
 end
 
 module Edit = struct
-  let add_recipients_if_none_exists recipients secret_path =
-    match Storage.Secrets.no_keys_file (Path.dirname secret_path) with
-    | false -> Lwt.return_unit
-    | true ->
-      (* also adds root group by default for all new secrets *)
-      let root_recipients_names = Storage.Secrets.recipients_of_group_name ~map_fn:(fun x -> x) "@root" in
-      (* just a separator line before printing the added recipients *)
-      let%lwt () = eprintl "" in
-      let%lwt () = eprintlf "I: using recipient group @root for secret %s" (show_path secret_path) in
-      (* avoid repeating names if the user creating the secret is already in the root group *)
-      let%lwt recipients_names =
-        Lwt_list.filter_map_s
-          (fun r ->
-            match List.mem r.Age.name root_recipients_names with
-            | true -> Lwt.return_none
-            | false ->
-              let%lwt () = Lwt_io.eprintf "I: using recipient %s for secret %s\n" r.name (show_path secret_path) in
-              Lwt.return_some r.name)
-          recipients
-      in
-      let%lwt () = Lwt_io.(flush stderr) in
-      let recipients_names_with_root_group = "@root" :: (recipients_names |> List.sort String.compare) in
-      let recipients_file_path = Storage.Secrets.get_recipients_file_path secret_path in
-      let (_ : Path.t) = Path.ensure_parent recipients_file_path in
-      Lwt_io.lines_to_file (show_path recipients_file_path) (recipients_names_with_root_group |> Lwt_stream.of_list)
-
-  let encrypt_with_retry ~plaintext ~secret_name recipients =
-    let rec loop () =
-      try%lwt Encrypt.encrypt_exn ~plaintext ~secret_name recipients
-      with exn ->
-        let%lwt () = eprintlf "Encryption failed: %s" (Exn.to_string exn) in
-        let%lwt () = Lwt_io.(flush stderr) in
-        (match%lwt Prompt.yesno "Would you like to try again?" with
-        | false -> Shell.die "E: retry cancelled"
-        | true -> loop ())
-    in
-    loop ()
-
   let new_secret_recipients_notice =
     {|
 If you are adding a new secret in a new folder, please keep recipients to a minimum and include the following:
@@ -187,29 +40,30 @@ If the secret is a staging secret, its only recipient should be @everyone.
 
   let show_recipients_notice_if_true cond = if cond then prerr_endline new_secret_recipients_notice
 
-  let edit_secret ?(self_fallback = false) secret_name ~allow_retry ~get_updated_secret =
+  let edit_secret ?(self_fallback = false) ?(verbose = false) secret_name ~allow_retry ~get_updated_secret =
     let raw_secret_name = show_name secret_name in
-    let%lwt original_secret =
+    let original_secret =
       match Storage.Secrets.secret_exists secret_name with
-      | false -> Lwt.return None
+      | false -> None
       | true ->
-        (try%lwt Lwt.map Devkit.some @@ Storage.Secrets.decrypt_exn secret_name
-         with exn -> Shell.die ~exn "E: failed to decrypt %s" raw_secret_name)
+      try Devkit.some @@ Storage.Secrets.decrypt_exn secret_name
+      with exn -> Shell.die ~exn "E: failed to decrypt %s" raw_secret_name
     in
-    try%lwt
-      let%lwt updated_secret = get_updated_secret original_secret in
+    try
+      let updated_secret = get_updated_secret original_secret in
       match updated_secret, original_secret with
-      | Ok updated_secret, Some original_secret when updated_secret = original_secret -> Exn.fail "I: secret unchanged"
+      | Ok updated_secret, Some original_secret when updated_secret = original_secret ->
+        prerr_endline "I: secret unchanged"
       | Error e, _ -> Shell.die "E: %s" e
       | Ok updated_secret, _ ->
         let secret_path = path_of_secret_name secret_name in
         let secret_recipients' = Storage.Secrets.get_recipients_from_path_exn secret_path in
-        let%lwt secret_recipients =
+        let secret_recipients =
           if secret_recipients' = [] && self_fallback then (
-            let%lwt own_recipients = Storage.Secrets.recipients_of_own_id () in
-            let%lwt () = add_recipients_if_none_exists own_recipients secret_path in
-            Lwt.return @@ Storage.Secrets.get_recipients_from_path_exn secret_path)
-          else Lwt.return secret_recipients'
+            let own_recipients = Storage.Secrets.recipients_of_own_id () in
+            let () = add_recipients_if_none_exists own_recipients secret_path in
+            Storage.Secrets.get_recipients_from_path_exn secret_path)
+          else secret_recipients'
         in
         if secret_recipients = [] then Exn.fail "E: no recipients specified for this secret"
         else (
@@ -219,180 +73,11 @@ If the secret is a staging secret, its only recipient should be @everyone.
             show_recipients_notice_if_true is_first_secret_in_new_folder;
             encrypt_with_retry ~plaintext:updated_secret ~secret_name secret_recipients
           | false ->
-            (try%lwt
-               show_recipients_notice_if_true is_first_secret_in_new_folder;
-               Encrypt.encrypt_exn ~plaintext:updated_secret ~secret_name secret_recipients
-             with exn -> Exn.fail ~exn "E: encrypting %s failed" raw_secret_name))
+          try
+            show_recipients_notice_if_true is_first_secret_in_new_folder;
+            Encrypt.encrypt_exn ~verbose ~plaintext:updated_secret ~secret_name secret_recipients
+          with exn -> Exn.fail ~exn "E: encrypting %s failed" raw_secret_name)
     with Failure s -> Shell.die "%s" s
-
-  (** takes two sorted lists and returns three lists:
-      first is items unique to l1, second is items unique to l2, third is items in both l1 and l2.
-
-      Preserves the order in the outputs *)
-  let diff_intersect_lists l1 r1 =
-    let rec diff accl accr accb left right =
-      match left, right with
-      | [], [] -> List.rev accl, List.rev accr, List.rev accb
-      | [], rh :: rt -> diff accl (rh :: accr) accb [] rt
-      | lh :: lt, [] -> diff (lh :: accl) accr accb lt []
-      | lh :: lt, rh :: rt ->
-        let comp = compare lh rh in
-        if comp < 0 then diff (lh :: accl) accr accb lt right
-        else if comp > 0 then diff accl (rh :: accr) accb left rt
-        else diff accl accr (lh :: accb) lt rt
-    in
-    diff [] [] [] l1 r1
-
-  let shm_check =
-    lazy
-      (let shm_dir = Path.inject "/dev/shm" in
-       let has_sufficient_perms =
-         try
-           Path.access shm_dir [ F_OK; W_OK; X_OK ];
-           true
-         with Unix.Unix_error _ -> false
-       in
-       let%lwt parent =
-         match Path.is_directory shm_dir && has_sufficient_perms with
-         | true -> Lwt.return_some shm_dir
-         | false ->
-           (match%lwt
-              Prompt.yesno
-                {|Your system does not have /dev/shm, which means that it may
-be difficult to entirely erase the temporary non-encrypted
-password file after editing.
-
-Are you sure you would like to continue?|}
-            with
-           | false -> exit 1
-           | true -> Lwt.return_none)
-       in
-       Lwt.return parent)
-
-  let with_secure_tmpfile suffix f =
-    let program = Filename.basename Sys.executable_name in
-    let%lwt parent = Lazy.force shm_check in
-    Lwt_io.with_temp_dir ~perm:0o700 ?parent:(Option.map show_path parent) ~prefix:(sprintf "%s." program)
-      (fun secure_tmpdir ->
-        let suffix = sprintf "-%s.txt" (Devkit.Stre.replace_all ~str:suffix ~sub:"/" ~by:"-") in
-        Lwt_io.with_temp_file ~temp_dir:secure_tmpdir ~suffix ~perm:0o600 f)
-
-  (* make sure they really meant to exit without saving. But this is going to mess
-   * up if an editor never cleanly exits. *)
-  let rec edit_loop tmpfile =
-    let%lwt had_exception = try%lwt Lwt.map (fun () -> false) (Shell.editor tmpfile) with _ -> Lwt.return true in
-    if had_exception then (
-      match%lwt Prompt.yesno "Editor was exited without saving successfully, try again?" with
-      | true -> edit_loop tmpfile
-      | false -> Lwt.return false)
-    else Lwt.return true
-
-  let validate_recipients ?(groups_only = false) recipients_list =
-    let all_recipient_names = Storage.Keys.all_recipient_names () in
-    let all_group_names = Storage.Secrets.all_groups_names () |> List.map (fun g -> "@" ^ g) in
-    let valid_names = all_recipient_names @ all_group_names @ [ "@everyone" ] in
-    let invalid_recipients =
-      List.filter
-        (fun name ->
-          let is_invalid = not (List.mem name valid_names) in
-          if groups_only then String.starts_with ~prefix:"@" name && is_invalid else is_invalid)
-        recipients_list
-    in
-    match invalid_recipients with
-    | [] -> Ok ()
-    | invalid_recipients' ->
-      let error_msg =
-        match invalid_recipients' with
-        | [ r ] -> sprintf "Invalid recipient: %s does not exist" r
-        | _ -> sprintf "Invalid recipients: %s do not exist" (String.concat ", " invalid_recipients')
-      in
-      Error error_msg
-
-  let validate_recipients_for_editing = validate_recipients ~groups_only:true
-  let validate_recipients_for_commands = validate_recipients ~groups_only:false
-
-  let recipients_validation_once ~validate get_recipients =
-    let%lwt input = get_recipients () in
-    (* Parse recipients from input, filtering out comments and empty lines *)
-    let recipients_list =
-      String.split_on_char '\n' input
-      |> List.filter_map (fun line ->
-             let trimmed = String.trim line in
-             if trimmed = "" || String.starts_with ~prefix:"#" trimmed then None else Some trimmed)
-    in
-    match validate recipients_list with
-    | Error e -> if Prompt.is_TTY = false then Shell.die "%s" e else Lwt.return_error e
-    | Ok () -> Lwt.return_ok recipients_list
-
-  let rewrite_recipients_file secret_name new_recipients_list =
-    let secret_path = path_of_secret_name secret_name in
-    let sorted_base_recipients = Storage.Secrets.get_recipients_names secret_path in
-    let secret_recipients_file = Storage.Secrets.get_recipients_file_path secret_path in
-    let (_ : Path.t) = Path.ensure_parent secret_recipients_file in
-    (* Deduplicate and sort recipients *)
-    let deduplicated_recipients = List.sort_uniq String.compare new_recipients_list in
-    let%lwt () = Lwt_io.lines_to_file (show_path secret_recipients_file) (Lwt_stream.of_list deduplicated_recipients) in
-    let sorted_updated_recipients_names = Storage.Secrets.get_recipients_names secret_path in
-    if sorted_base_recipients <> sorted_updated_recipients_names then (
-      let secrets_affected = Storage.Secrets.get_secrets_in_folder (Path.folder_of_path secret_path) in
-      (* it might be that we are creating a secret in a new folder and adding new recipients,
-         so we have no extra affected secrets. Only refresh if there are affected secrets *)
-      if secrets_affected <> [] then
-        Storage.Secrets.refresh ~force:true ~verbose:(!verbosity = Verbose) secrets_affected
-      else Lwt.return_unit)
-    else eprintl "I: no changes made to the recipients"
-
-  let edit_recipients secret_name =
-    let path_to_secret = path_of_secret_name secret_name in
-    let sorted_base_recipients =
-      try Storage.Secrets.get_recipients_names path_to_secret with exn -> Shell.die ~exn "E: failed to get recipients"
-    in
-    let recipients_groups, current_recipients_names = sorted_base_recipients |> List.partition Age.is_group_recipient in
-    let left, right, common = diff_intersect_lists current_recipients_names (Storage.Keys.all_recipient_names ()) in
-    let all_available_groups = Storage.Secrets.all_groups_names () |> List.map (fun g -> "@" ^ g) in
-    let unused_groups = List.filter (fun g -> not (List.mem g recipients_groups)) all_available_groups in
-    let recipient_lines =
-      (if recipients_groups = [] then [] else ("# Groups " :: recipients_groups) @ [ "" ])
-      @ ("# Recipients " :: common)
-      @ [ "" ]
-      @ (if left = [] then [] else "#" :: "# Warning, unknown recipients below this line " :: "#" :: left)
-      @ "#"
-        :: "# Uncomment recipients below to add them. You can also add valid groups names if you want."
-        :: "#"
-        ::
-        (if unused_groups = [] then []
-         else ("# Available groups:" :: List.map (fun g -> "# " ^ g) unused_groups) @ [ "#" ])
-      @ if right = [] then [] else "# Available users:" :: List.map (fun r -> "# " ^ r) right
-    in
-    with_secure_tmpfile (show_name secret_name) (fun (tmpfile, tmpfile_oc) ->
-        (* write and then close to make it available to the editor *)
-        let%lwt () = Lwt_list.iter_s (Lwt_io.write_line tmpfile_oc) recipient_lines in
-        let%lwt () = Lwt_io.close tmpfile_oc in
-        if%lwt edit_loop tmpfile then (
-          let rec validate_and_edit () =
-            let get_recipients_from_file () = Lwt_io.(with_file ~mode:Input tmpfile read) in
-            match%lwt recipients_validation_once ~validate:validate_recipients_for_editing get_recipients_from_file with
-            | Error e ->
-              let%lwt () = Lwt_io.printlf "\n%s" e in
-              if%lwt Prompt.yesno "Edit again?" then (
-                let%lwt _ = edit_loop tmpfile in
-                validate_and_edit ())
-              else Shell.die "%s" e
-            | Ok new_recipients_list -> rewrite_recipients_file secret_name new_recipients_list
-          in
-          validate_and_edit ())
-        else verbose_eprintlf "E: no recipients provided")
-
-  let new_text_from_editor ?(initial = "") ?(name = "new") () =
-    with_secure_tmpfile name (fun (tmpfile, tmpfile_oc) ->
-        let%lwt () =
-          if initial <> "" then (
-            let%lwt () = Lwt_io.write tmpfile_oc initial in
-            Lwt_io.close tmpfile_oc)
-          else Lwt.return_unit
-        in
-        let%lwt () = Shell.editor tmpfile in
-        Lwt_io.(with_file ~mode:Input tmpfile read))
 end
 
 module Converters = struct
@@ -452,11 +137,9 @@ module Flags = struct
     let doc = "list of relative $(docv)s from the secrets directory that will be used to process secrets" in
     Arg.(value & pos_all Converters.path_arg [ Path.inject "." ] & info [] ~docv:"PATH" ~doc)
 
-  let set_verbosity =
+  let verbose =
     let doc = "print verbose output during execution" in
-    let verbose = Verbose, Arg.info [ "v"; "verbose" ] ~doc in
-    let verbosity_term = Arg.(value & vflag Normal [ verbose ]) in
-    Term.(const (fun v -> verbosity := v) $ verbosity_term)
+    Arg.(value & flag & info [ "v"; "verbose" ] ~doc)
 
   let template_file =
     let doc = "the path of the template file" in
@@ -472,30 +155,10 @@ module Add_who = struct
     let doc = "the names of the recipients to add. Can be one or many" in
     Arg.(non_empty & pos_right 0 string [] & info [] ~docv:"RECIPIENT" ~doc)
 
-  let add_recipients_to_secret secret_name recipients_to_add =
-    let secret_path = path_of_secret_name secret_name in
-    match Storage.Secrets.secret_exists_at secret_path with
-    | false -> Shell.die "E: no such secret: %s" (show_name secret_name)
-    | true ->
-      Invariant.run_if_recipient ~op_string:"add recipients" ~path:secret_path ~f:(fun () ->
-          let%lwt () =
-            match Edit.validate_recipients_for_commands recipients_to_add with
-            | Error msg -> Shell.die "%s" msg
-            | Ok () -> Lwt.return_unit
-          in
-          let current_recipients = Storage.Secrets.get_recipients_names secret_path in
-          let new_recipients = List.sort_uniq String.compare (current_recipients @ recipients_to_add) in
-          if current_recipients = new_recipients then
-            eprintl "I: no changes made - all specified recipients are already present"
-          else (
-            let%lwt () = Edit.rewrite_recipients_file secret_name new_recipients in
-            let added_count = List.length new_recipients - List.length current_recipients in
-            eprintlf "I: added %d recipient%s" added_count (if added_count = 1 then "" else "s")))
-
   let add_who =
     let doc = "add recipients to the specified secret" in
     let info = Cmd.info "add-who" ~doc in
-    let term = main_run Term.(const add_recipients_to_secret $ Flags.secret_name $ recipient_names) in
+    let term = Term.(const add_recipients_to_secret $ Flags.secret_name $ recipient_names) in
     Cmd.v info term
 end
 
@@ -504,52 +167,19 @@ module Rm_who = struct
     let doc = "the names of the recipients to remove. Can be one or many" in
     Arg.(non_empty & pos_right 0 string [] & info [] ~docv:"RECIPIENT" ~doc)
 
-  let remove_recipients_from_secret secret_name recipients_to_remove =
-    let secret_path = path_of_secret_name secret_name in
-    match Storage.Secrets.secret_exists_at secret_path with
-    | false -> Shell.die "E: no such secret: %s" (show_name secret_name)
-    | true ->
-      Invariant.run_if_recipient ~op_string:"remove recipients" ~path:secret_path ~f:(fun () ->
-          let current_recipients = Storage.Secrets.get_recipients_names secret_path in
-          let new_recipients = List.filter (fun r -> not (List.mem r recipients_to_remove)) current_recipients in
-          (* Check for non-existent recipients to warn about *)
-          let non_existent = List.filter (fun r -> not (List.mem r current_recipients)) recipients_to_remove in
-          if new_recipients = [] then Shell.die "E: cannot remove all recipients - at least one recipient must remain"
-          else if current_recipients = new_recipients then (
-            match non_existent with
-            | [] -> eprintl "I: no changes made - specified recipients were already absent"
-            | _ -> eprintlf "W: recipients not found: %s" (String.concat ", " non_existent))
-          else (
-            (* Show warnings for non-existent recipients before proceeding *)
-            let%lwt () =
-              if non_existent <> [] then eprintlf "W: recipients not found: %s" (String.concat ", " non_existent)
-              else Lwt.return_unit
-            in
-            let%lwt () = Edit.rewrite_recipients_file secret_name new_recipients in
-            let removed_count = List.length current_recipients - List.length new_recipients in
-            eprintlf "I: removed %d recipient%s" removed_count (if removed_count = 1 then "" else "s")))
-
   let rm_who =
     let doc = "remove recipients from the specified secret" in
     let info = Cmd.info "rm-who" ~doc in
-    let term = main_run Term.(const remove_recipients_from_secret $ Flags.secret_name $ recipient_names) in
+    let term = Term.(const remove_recipients_from_secret $ Flags.secret_name $ recipient_names) in
     Cmd.v info term
 end
 
 module Create = struct
-  let invariant_create ~create_new_secret secret_name =
-    if Storage.Secrets.secret_exists secret_name then
-      Shell.die "E: refusing to create: a secret by that name already exists"
-    else (
-      let%lwt () = Invariant.die_if_invariant_fails ~op_string:"create" (path_of_secret_name secret_name) in
-      create_new_secret secret_name)
-
-  let create_new_secret_from_stdin secret_name comment_opt =
-    let create_new_secret secret_name =
-      Edit.edit_secret secret_name ~self_fallback:true ~allow_retry:false ~get_updated_secret:(fun _ ->
-          let open Prompt in
-          let%lwt () = input_help_if_user_input () in
-          match%lwt get_valid_input_from_stdin_exn () with
+  let create_new_secret_from_stdin verbose secret_name comment_opt =
+    let create_new_secret verbose secret_name =
+      Edit.edit_secret secret_name ~verbose ~self_fallback:true ~allow_retry:false ~get_updated_secret:(fun _ ->
+          let () = input_help_if_user_input () in
+          match get_valid_input_from_stdin_exn () with
           | Error e -> Shell.die "E: %s" e
           | Ok plaintext_secret ->
             let parsed_secret = Secret.Validation.parse_exn plaintext_secret in
@@ -564,14 +194,14 @@ module Create = struct
             in
             (match validate_comments comment with
             | Error e -> Shell.die "E: invalid comment format: %s" e
-            | Ok () ->
-              Lwt_result.return
-              @@
-              (match parsed_secret.kind with
-              | Secret.Singleline -> Secret.singleline_from_text_description parsed_secret.text comment
-              | Secret.Multiline -> Secret.multiline_from_text_description parsed_secret.text comment)))
+            | Ok c -> Ok (reconstruct_secret ~comments:(Some c) parsed_secret)))
     in
-    invariant_create ~create_new_secret secret_name
+    match Storage.Secrets.secret_exists secret_name with
+    | true -> Shell.die "E: refusing to create: a secret by that name already exists"
+    | false ->
+      let path = Storage.Secrets.(to_path secret_name) in
+      let () = Invariant.die_if_invariant_fails ~op_string:"create" path in
+      create_new_secret verbose secret_name
 
   let create =
     let doc =
@@ -579,38 +209,37 @@ module Create = struct
       tries to set them to the ones associated with \${PASSAGE_IDENTITY} |}
     in
     let info = Cmd.info "create" ~doc in
-    let term = main_run Term.(const create_new_secret_from_stdin $ Flags.secret_name $ Flags.comment) in
+    let term = Term.(const (create_new_secret_from_stdin false) $ Flags.secret_name $ Flags.comment) in
     Cmd.v info term
 end
 
 module Edit_cmd = struct
   let edit secret_name =
-    match Storage.Secrets.secret_exists secret_name with
-    | false -> Shell.die "E: no such secret: %s.  Use \"new\" or \"create\" for new secrets." (show_name secret_name)
-    | true ->
-      Invariant.run_if_recipient ~op_string:"edit secret" ~path:(path_of_secret_name secret_name) ~f:(fun () ->
-          Edit.edit_secret secret_name ~allow_retry:true ~get_updated_secret:(fun initial ->
-              Prompt.input_and_validate_loop
-                ~validate:Prompt.validate_secret
-                  (* when we are editing a secret, we know `initial` is Some and we add the format explainer to it *)
-                ?initial:(Option.map (fun i -> i ^ Secret.format_explainer) initial)
-                (Edit.new_text_from_editor ~name:(show_name secret_name))))
+    check_exists_or_die secret_name;
+    Invariant.run_if_recipient ~op_string:"edit secret"
+      ~path:Storage.Secrets.(to_path secret_name)
+      ~f:(fun () ->
+        Edit.edit_secret secret_name ~allow_retry:true ~get_updated_secret:(fun initial ->
+            let initial_content =
+              Option.map (fun i -> i ^ Secret.format_explainer) initial |> Option.value ~default:Secret.format_explainer
+            in
+            Util.Editor.edit_with_validation ~initial:initial_content ~validate:validate_secret ()))
 
   let edit =
     let doc = "edit the contents of the specified secret" in
     let info = Cmd.info "edit" ~doc in
-    let term = main_run Term.(const edit $ Flags.secret_name) in
+    let term = Term.(const edit $ Flags.secret_name) in
     Cmd.v info term
 end
 
 module Edit_who = struct
   let edit_who_with_check secret_name =
-    let secret_path = path_of_secret_name secret_name in
+    let secret_path = Storage.Secrets.(to_path secret_name) in
     match Path.is_directory (Path.abs secret_path), Storage.Secrets.secret_exists_at secret_path with
     | false, false -> Shell.die "E: no such secret: %s" (show_name secret_name)
-    | _, true | true, _ ->
-      Invariant.run_if_recipient ~op_string:"edit recipients" ~path:(path_of_secret_name secret_name) ~f:(fun () ->
-          Edit.edit_recipients secret_name)
+    | _ ->
+      let path = Storage.Secrets.(to_path secret_name) in
+      Invariant.run_if_recipient ~op_string:"edit recipients" ~path ~f:(fun () -> edit_recipients secret_name)
 
   let edit_who =
     let doc =
@@ -618,58 +247,30 @@ module Edit_who = struct
       \  in the tree, so all recipients need to be specified at the level of the immediately containing folder."
     in
     let info = Cmd.info "edit-who" ~doc in
-    let term = main_run Term.(const edit_who_with_check $ Flags.secret_name) in
+    let term = Term.(const edit_who_with_check $ Flags.secret_name) in
     Cmd.v info term
 end
 
 module Edit_comments = struct
   let edit_comments secret_name =
-    match Storage.Secrets.secret_exists secret_name with
-    | false -> Shell.die "E: no such secret: %s.  Use \"new\" or \"create\" for new secrets." (show_name secret_name)
-    | true ->
-      let path = path_of_secret_name secret_name in
-      Invariant.run_if_recipient ~op_string:"edit comments" ~path ~f:(fun () ->
-          let%lwt secret_plaintext = Storage.Secrets.decrypt_exn secret_name in
-          let parsed_secret = Secret.Validation.parse_exn secret_plaintext in
-          let get_comments_from_stdin () =
-            let%lwt new_comments = Lwt_io.read Lwt_io.stdin in
-            let new_comments = String.trim new_comments in
-            match Prompt.validate_comments new_comments with
-            | Error e -> Shell.die "E: %s" e
-            | _ -> Lwt.return new_comments
-          in
-          let get_comments_from_editor () =
-            let%lwt new_comments =
-              Prompt.input_and_validate_loop ~validate:Prompt.validate_comments ?initial:parsed_secret.comments
-                (Edit.new_text_from_editor ~name:(show_name secret_name))
-            in
-            let new_comments = Result.map String.trim new_comments in
-            match new_comments with
-            | Error e -> Shell.die "E: %s" e
-            | Ok new_comments -> Lwt.return new_comments
-          in
-          let%lwt new_comments =
-            match Prompt.is_TTY with
-            | false -> get_comments_from_stdin ()
-            | true -> get_comments_from_editor ()
-          in
-          match parsed_secret.comments, new_comments = "" with
-          | None, true -> Shell.die "I: comments unchanged"
-          | Some old, false when old = new_comments -> Shell.die "I: comments unchanged"
-          | _ ->
-            let updated_secret =
-              match parsed_secret.kind with
-              | Secret.Singleline -> Secret.singleline_from_text_description parsed_secret.text new_comments
-              | Secret.Multiline -> Secret.multiline_from_text_description parsed_secret.text new_comments
-            in
-            let secret_recipients = Storage.Secrets.get_recipients_from_path_exn path in
-            (try%lwt Edit.encrypt_with_retry ~plaintext:updated_secret ~secret_name secret_recipients
-             with exn -> Shell.die ~exn "E: encrypting %s failed" (show_name secret_name)))
+    check_exists_or_die secret_name;
+    let path = Storage.Secrets.(to_path secret_name) in
+    Invariant.run_if_recipient ~op_string:"edit comments" ~path ~f:(fun () ->
+        let parsed_secret = decrypt_and_parse secret_name in
+        let new_comments = get_comments ?initial:parsed_secret.comments () in
+        match parsed_secret.comments, new_comments = "" with
+        | None, true -> prerr_endline "I: comments unchanged"
+        | Some old, false when old = new_comments -> prerr_endline "I: comments unchanged"
+        | _ ->
+          let updated_secret = reconstruct_secret ~comments:(Some new_comments) parsed_secret in
+          let secret_recipients = Util.Recipients.get_recipients_or_die secret_name in
+          (try encrypt_with_retry ~plaintext:updated_secret ~secret_name secret_recipients
+           with exn -> Shell.die ~exn "E: encrypting %s failed" (show_name secret_name)))
 
   let edit_comments_cmd =
     let doc = "edit the comments of the specified secret" in
     let info = Cmd.info "edit-comments" ~doc in
-    let term = main_run Term.(const edit_comments $ Flags.secret_name) in
+    let term = Term.(const edit_comments $ Flags.secret_name) in
     Cmd.v info term
 end
 
@@ -683,12 +284,12 @@ module Get = struct
     let save_to_clipboard_exn ~secret =
       let read_clipboard () = Shell.xclip_read_clipboard Config.x_selection in
       let copy_to_clipboard s =
-        try%lwt Shell.xclip_copy_to_clipboard s ~x_selection:Config.x_selection
+        try Shell.xclip_copy_to_clipboard s ~x_selection:Config.x_selection
         with exn -> Exn.fail ~exn "E: could not copy data to the clipboard"
       in
       let restore_clipboard original_content =
-        let%lwt () = Lwt_unix.sleep (float_of_int Config.clip_time) in
-        let%lwt current_content = read_clipboard () in
+        let () = Unix.sleep Config.clip_time in
+        let current_content = read_clipboard () in
         (* It might be nice to programatically check to see if klipper exists,
            as well as checking for other common clipboard managers. But for now,
            this works fine -- if qdbus isn't there or if klipper isn't running,
@@ -696,35 +297,36 @@ module Get = struct
 
            Clipboard managers frequently write their history out in plaintext,
            so we axe it here: *)
-        let%lwt () =
-          try%lwt Shell.clear_clipboard_managers ()
+        let () =
+          try Shell.clear_clipboard_managers ()
           with _ ->
             (* any exns raised are likely due to qdbus, klipper, etc., being absent.
                Thus, we swallow these exns so that it becomes a no-op *)
-            Lwt.return_unit
+            ()
         in
         match current_content = secret with
         | false ->
           (* clipboard was used and overwritten, so we don't attempt to perform any restoration *)
-          Lwt.return_unit
+          ()
         | true -> copy_to_clipboard original_content
       in
-      let%lwt original_content = read_clipboard () in
-      let%lwt () = copy_to_clipboard secret in
+      let original_content = read_clipboard () in
+      let () = copy_to_clipboard secret in
       (* flush before forking to avoid double-flush *)
-      let%lwt () = Lwt_io.flush_all () in
+      let () = flush_all () in
       match Devkit.Nix.fork () with
       | `Child ->
         let (_ : int) = Unix.setsid () in
-        let%lwt () = restore_clipboard original_content in
-        Lwt.return `Child
-      | `Forked _ as forked -> Lwt.return forked
+        let () = restore_clipboard original_content in
+        `Child
+      | `Forked _ as forked -> forked
+
     let save_to_clipboard ~secret_name ~secret =
-      try%lwt
-        match%lwt save_to_clipboard_exn ~secret with
-        | `Child -> Lwt.return_unit
+      try
+        match save_to_clipboard_exn ~secret with
+        | `Child -> ()
         | `Forked _ ->
-          eprintlf "Copied %s to clipboard. Will clear in %d seconds." (show_name secret_name) Config.clip_time
+          Devkit.eprintfn "Copied %s to clipboard. Will clear in %d seconds." (show_name secret_name) Config.clip_time
       with exn -> Shell.die ~exn "E: failed to save to clipboard! Check if you have an X server running."
   end
 
@@ -732,59 +334,57 @@ module Get = struct
     let secret_exists =
       try Storage.Secrets.secret_exists secret_name with exn -> Shell.die ~exn "E: %s" (show_name secret_name)
     in
-    match secret_exists with
+    (match secret_exists with
     | false ->
       if Path.is_directory Storage.Secrets.(to_path secret_name |> Path.abs) then
         Shell.die "E: %s is a directory" (show_name secret_name)
       else Shell.die "E: no such secret: %s" (show_name secret_name)
-    | true ->
-      let get_line_exn secret line_number =
-        if line_number < 1 then Shell.die "Line number should be greater than 0";
-        let lines = String.split_on_char '\n' secret in
-        (* user specified line number is 1-indexed *)
-        match List.nth_opt lines (line_number - 1) with
-        | None -> Shell.die "There is no secret at line %d" line_number
-        | Some l -> l
-      in
-      let%lwt plaintext =
-        try%lwt Storage.Secrets.decrypt_exn secret_name
-        with exn -> Shell.die ~exn "E: failed to decrypt %s" (show_name secret_name)
-      in
-      let secret =
-        match with_comments, line_number with
-        | true, None -> plaintext
-        | true, Some ln -> get_line_exn plaintext ln
-        | false, _ ->
-          let secret =
-            try Secret.Validation.parse_exn plaintext
-            with exn -> Shell.die ~exn "E: failed to parse %s" (show_name secret_name)
-          in
-          let kind = secret.kind in
-          (* we can have this validation only here because we don't have expected kinds when using the cat command
-              (the with_comments = true branch) *)
-          (match Option.is_some expected_kind && Option.get expected_kind <> kind with
-          | true ->
-            Shell.die "E: %s is expected to be a %s secret but it is a %s secret" (show_name secret_name)
-              (Secret.kind_to_string @@ Option.get expected_kind)
-              (Secret.kind_to_string kind)
-          | false -> ());
-          (match line_number with
-          | None -> secret.text
-          | Some ln -> get_line_exn secret.text ln)
-      in
-      let secret =
-        match trim_new_line, String.ends_with ~suffix:"\n" secret with
-        (* some of the older secrets were not trimmed before storing, so they have trailing new lines *)
-        | true, true -> String.sub secret 0 (String.length secret - 1)
-        | false, false -> sprintf "%s\n" secret
-        | true, false | false, true -> secret
-      in
-      (match output_mode with
-      | QrCode ->
-        Output.print_as_qrcode ~secret_name ~secret;
-        Lwt.return_unit
-      | Clipboard -> Output.save_to_clipboard ~secret_name ~secret
-      | Stdout -> Lwt_io.print secret)
+    | true -> ());
+    let get_line_exn secret line_number =
+      if line_number < 1 then Shell.die "Line number should be greater than 0";
+      let lines = String.split_on_char '\n' secret in
+      (* user specified line number is 1-indexed *)
+      match List.nth_opt lines (line_number - 1) with
+      | None -> Shell.die "There is no secret at line %d" line_number
+      | Some l -> l
+    in
+    let plaintext =
+      try Storage.Secrets.decrypt_exn secret_name
+      with exn -> Shell.die ~exn "E: failed to decrypt %s" (show_name secret_name)
+    in
+    let secret =
+      match with_comments, line_number with
+      | true, None -> plaintext
+      | true, Some ln -> get_line_exn plaintext ln
+      | false, _ ->
+        let secret =
+          try Secret.Validation.parse_exn plaintext
+          with exn -> Shell.die ~exn "E: failed to parse %s" (show_name secret_name)
+        in
+        let kind = secret.kind in
+        (* we can have this validation only here because we don't have expected kinds when using the cat command
+            (the with_comments = true branch) *)
+        (match Option.is_some expected_kind && Option.get expected_kind <> kind with
+        | true ->
+          Shell.die "E: %s is expected to be a %s secret but it is a %s secret" (show_name secret_name)
+            (Secret.kind_to_string @@ Option.get expected_kind)
+            (Secret.kind_to_string kind)
+        | false -> ());
+        (match line_number with
+        | None -> secret.text
+        | Some ln -> get_line_exn secret.text ln)
+    in
+    let secret =
+      match trim_new_line, String.ends_with ~suffix:"\n" secret with
+      (* some of the older secrets were not trimmed before storing, so they have trailing new lines *)
+      | true, true -> String.sub secret 0 (String.length secret - 1)
+      | false, false -> sprintf "%s\n" secret
+      | true, false | false, true -> secret
+    in
+    match output_mode with
+    | QrCode -> Output.print_as_qrcode ~secret_name ~secret
+    | Clipboard -> Output.save_to_clipboard ~secret_name ~secret
+    | Stdout -> print_string secret
 
   let singleline_only =
     let doc =
@@ -800,14 +400,13 @@ module Get = struct
     let get secret_name output_mode line_number expected_kind trim_new_line =
       get_secret ?expected_kind ~with_comments:false ?line_number ~trim_new_line secret_name output_mode
     in
-    main_run
-      Term.(
-        const get
-        $ Flags.secret_name
-        $ Flags.secret_output_mode
-        $ Flags.secret_line_number
-        $ singleline_only
-        $ trim_new_line)
+    Term.(
+      const get
+      $ Flags.secret_name
+      $ Flags.secret_output_mode
+      $ Flags.secret_line_number
+      $ singleline_only
+      $ trim_new_line)
 
   let get =
     let doc = "get the text of the specified secret, excluding comments" in
@@ -821,7 +420,7 @@ module Get = struct
 
   let cat secret_name output_mode line_number = get_secret ~with_comments:true ?line_number secret_name output_mode
   let cat_cmd =
-    let term = main_run Term.(const cat $ Flags.secret_name $ Flags.secret_output_mode $ Flags.secret_line_number) in
+    let term = Term.(const cat $ Flags.secret_name $ Flags.secret_output_mode $ Flags.secret_line_number) in
     let doc = "get the whole contents of the specified secret, including comments" in
     let info = Cmd.info "cat" ~doc in
     Cmd.v info term
@@ -845,9 +444,10 @@ module Healthcheck = struct
     Arg.(value & vflag NoUpgrade upgrade_mode)
 
   let check_folders_without_keys_file () =
-    let%lwt () =
-      eprintl
+    let () =
+      prerr_endline
         {|
+
 PASSAGE HEALTHCHECK. Diagnose for common problems
 
 ==========================================================================
@@ -856,85 +456,76 @@ Checking for folders without .keys file
     in
     let folders_without_keys_file = Storage.Secrets.(all_paths () |> List.filter has_secret_no_keys) in
     match folders_without_keys_file with
-    | [] -> eprintl "\nSUCCESS: secrets all have .keys in the immediate directory"
+    | [] -> prerr_endline "\nSUCCESS: secrets all have .keys in the immediate directory"
     | _ ->
-      let%lwt () = Lwt_io.printl "\nERROR: found paths with secrets but no .keys file:" in
-      let%lwt () = Lwt_list.iter_s (fun p -> Lwt_io.printlf "- %s" (show_path p)) folders_without_keys_file in
-      let%lwt () = Lwt_io.(flush stderr) in
-      healthcheck_with_errors := true;
-      Lwt.return_unit
+      let () = print_endline "\nERROR: found paths with secrets but no .keys file:" in
+      let () = List.iter (fun p -> Printf.eprintf "- %s\n" (show_path p)) folders_without_keys_file in
+      let () = flush stderr in
+      healthcheck_with_errors := true
 
-  let check_own_secrets_validity upgrade_mode =
+  let check_own_secrets_validity verbose upgrade_mode =
     let open Storage in
-    let%lwt () =
-      eprintl
+    let () =
+      prerr_endline
         {|
 ==========================================================================
 Checking for validity of own secrets. Use -v flag to break down per secret
 ==========================================================================
 |}
     in
-    let%lwt recipients_of_own_id = Secrets.recipients_of_own_id () in
-    Lwt_list.iter_s
+    let recipients_of_own_id = Secrets.recipients_of_own_id () in
+    List.iter
       (fun (recipient : Age.recipient) ->
         match Secrets.get_secrets_for_recipient recipient.name with
-        | [] -> Lwt_io.eprintlf "No secrets found for %s" recipient.name
+        | [] -> Printf.eprintf "No secrets found for %s" recipient.name
         | secrets ->
           let sorted_secrets = List.sort Secret_name.compare secrets in
-          let%lwt ok, invalid, fail =
-            Lwt_list.fold_left_s
+          let ok, invalid, fail =
+            List.fold_left
               (fun (ok, invalid, fail) secret_name ->
-                try%lwt
-                  let%lwt secret_text = Secrets.decrypt_exn ~silence_stderr:true secret_name in
+                try
+                  let secret_text = Secrets.decrypt_exn ~silence_stderr:true secret_name in
                   match Secret.Validation.validate secret_text with
                   | Ok kind ->
-                    let%lwt () =
-                      verbose_eprintlf "✅ %s [ valid %s ]" (show_name secret_name) (Secret.kind_to_string kind)
+                    let () =
+                      verbose_eprintlf ~verbose "✅ %s [ valid %s ]" (show_name secret_name) (Secret.kind_to_string kind)
                     in
-                    Lwt.return (succ ok, invalid, fail)
+                    succ ok, invalid, fail
                   | Error (e, validation_error_type) ->
                     healthcheck_with_errors := true;
-                    let%lwt () = Lwt_io.printlf "❌ %s [ invalid format: %s ]" (show_name secret_name) e in
-                    let%lwt upgraded_secrets =
+                    let () = Printf.eprintf "❌ %s [ invalid format: %s ]\n" (show_name secret_name) e in
+                    let upgraded_secrets =
                       match upgrade_mode, validation_error_type with
                       | Upgrade, SingleLineLegacy ->
-                        (try%lwt
-                           let { Secret.text; comments; _ } = Secret.Validation.parse_exn secret_text in
-                           let upgraded_secret =
-                             Secret.singleline_from_text_description text (Option.value ~default:"" comments)
-                           in
-                           let recipients =
-                             Storage.Secrets.get_recipients_from_path_exn (path_of_secret_name secret_name)
-                           in
-                           let%lwt () = Encrypt.encrypt_exn ~plaintext:upgraded_secret ~secret_name recipients in
-                           let%lwt () = eprintlf "I: updated %s" (show_name secret_name) in
-                           Lwt.return 1
+                        (try
+                           let parsed_secret = Secret.Validation.parse_exn secret_text in
+                           let upgraded_secret = reconstruct_secret ~comments:parsed_secret.comments parsed_secret in
+                           let recipients = Util.Recipients.get_recipients_or_die secret_name in
+                           Encrypt.encrypt_exn ~verbose:false ~plaintext:upgraded_secret ~secret_name recipients;
+                           Devkit.eprintfn "I: updated %s" (show_name secret_name);
+                           1
                          with exn ->
-                           let%lwt () =
-                             Lwt_io.eprintlf "E: encrypting %s failed: %s" (show_name secret_name)
-                               (Printexc.to_string exn)
-                           in
-                           Lwt.return 0)
+                           Printf.eprintf "E: encrypting %s failed: %s\n" (show_name secret_name)
+                             (Printexc.to_string exn);
+                           0)
                       | DryRun, SingleLineLegacy ->
-                        let%lwt () = eprintlf "I: would update %s" (show_name secret_name) in
-                        Lwt.return 1
-                      | NoUpgrade, _ | Upgrade, _ | DryRun, _ -> Lwt.return 0
+                        Devkit.eprintfn "I: would update %s" (show_name secret_name);
+                        1
+                      | NoUpgrade, _ | Upgrade, _ | DryRun, _ -> 0
                     in
-                    Lwt.return (ok + upgraded_secrets, succ (invalid - upgraded_secrets), fail)
+                    ok + upgraded_secrets, succ (invalid - upgraded_secrets), fail
                 with _ ->
-                  let%lwt () = Lwt_io.printlf "🚨 %s [ WARNING: failed to decrypt ]" (show_name secret_name) in
-                  Lwt.return (ok, invalid, succ fail))
+                  let () = Printf.eprintf "🚨 %s [ WARNING: failed to decrypt ]\n" (show_name secret_name) in
+                  ok, invalid, succ fail)
               (0, 0, 0) sorted_secrets
           in
-          let%lwt () =
-            Lwt_io.eprintlf "\nI: %i valid secrets, %i invalid and %i with decryption issues" ok invalid fail
-          in
-          Lwt.return_unit)
+          let () = Printf.eprintf "\nI: %i valid secrets, %i invalid and %i with decryption issues\n" ok invalid fail in
+          ())
       recipients_of_own_id
 
-  let healthcheck upgrade_mode =
-    let%lwt () = check_folders_without_keys_file () in
-    let%lwt () = check_own_secrets_validity upgrade_mode in
+  let healthcheck verbose upgrade_mode =
+    let () = check_folders_without_keys_file () in
+    let () = check_own_secrets_validity verbose upgrade_mode in
     match !healthcheck_with_errors with
     | true -> exit 1
     | false -> exit 0
@@ -942,16 +533,16 @@ Checking for validity of own secrets. Use -v flag to break down per secret
   let healthcheck =
     let doc = "check for issues with secrets, find directories that don't have keys, etc." in
     let info = Cmd.info "healthcheck" ~doc in
-    let term = main_run Term.(const (fun () -> healthcheck) $ Flags.set_verbosity $ secrets_upgrade_mode) in
+    let term = Term.(const healthcheck $ Flags.verbose $ secrets_upgrade_mode) in
     Cmd.v info term
 end
 
 module Init = struct
   let init () =
-    try%lwt
+    try
       (* create private and pub key, ask for user's name *)
-      let%lwt () =
-        Lwt_io.printl
+      let () =
+        print_endline
           {|
 Welcome to passage initial setup.
 
@@ -970,105 +561,107 @@ The location of these can be overriden using environment variables. Please check
 
 What should be the name used for your recipient identity?|}
       in
-      let%lwt user_name = Prompt.read_input_from_stdin () in
       let user_name =
-        String.trim user_name
+        String.trim @@ In_channel.input_all stdin
         |> ExtString.String.replace_chars (fun c ->
                match c with
                | ' ' -> "_"
                | '\n' -> ""
                | c -> Char.escaped c)
       in
-      let%lwt () = Shell.age_generate_identity_key_root_group_exn user_name in
-      Lwt_io.printlf "\nPassage setup completed. "
+      let () = Shell.age_generate_identity_key_root_group_exn user_name in
+      Printf.eprintf "\nPassage setup completed.\n"
     with exn ->
       (* Error out and delete everything, so we can start fresh next time *)
       FileUtil.rm ~recurse:true [ Config.base_dir ];
-      Lwt_io.printlf "E: Passage init failed. Please try again. Error:\n\n%s" (Printexc.to_string exn)
+      Printf.eprintf "E: Passage init failed. Please try again. Error:\n\n%s\n" (Printexc.to_string exn)
 
   let init =
     let doc = "initial setup of passage" in
     let info = Cmd.info "init" ~doc in
-    let term = main_run Term.(const init $ const ()) in
+    let term = Term.(const init $ const ()) in
     Cmd.v info term
 end
+
 module List_ = struct
   let list_secrets path =
     let raw_path = show_path path in
-    let%lwt secret_exists = try Lwt.return (Storage.Secrets.secret_exists_at path) with _exn -> Lwt.return false in
+    let secret_exists = try Storage.Secrets.secret_exists_at path with _exn -> false in
     match secret_exists with
-    | true -> Lwt_io.printl Storage.Secrets.(name_of_file (Path.abs path) |> show_name)
+    | true -> print_endline Storage.Secrets.(name_of_file (Path.abs path) |> show_name)
     | false ->
-      let%lwt is_dir =
-        try Lwt.return (Path.is_directory (Path.abs path)) with exn -> Shell.die ~exn "E: %s" raw_path
-      in
+      let is_dir = try Path.is_directory (Path.abs path) with exn -> Shell.die ~exn "E: %s" raw_path in
       (match is_dir with
       | true ->
         Storage.(Secrets.get_secrets_tree path |> List.sort Secret_name.compare)
-        |> Lwt_list.iter_s (fun s -> Lwt_io.printl @@ show_name s)
+        |> List.iter (fun s -> print_endline @@ show_name s)
       | false -> Shell.die "No secrets at %s" raw_path)
 
   let list =
     let doc = "recursively list all secrets" in
     let info = Cmd.info "list" ~doc in
-    let term = main_run Term.(const list_secrets $ Flags.secrets_path) in
+    let term = Term.(const list_secrets $ Flags.secrets_path) in
     Cmd.v info term
 
   let ls =
     let doc = "an alias for the list command" in
     let info = Cmd.info "ls" ~doc in
-    let term = main_run Term.(const list_secrets $ Flags.secrets_path) in
+    let term = Term.(const list_secrets $ Flags.secrets_path) in
     Cmd.v info term
 end
 
 module New = struct
-  let create_new_secret secret_name =
-    let%lwt () =
-      Edit.edit_secret ~self_fallback:true secret_name ~allow_retry:true ~get_updated_secret:(fun initial ->
-          Prompt.input_and_validate_loop ~validate:Prompt.validate_secret
-            ~initial:(Option.value ~default:Secret.format_explainer initial)
-            (Edit.new_text_from_editor ~name:(show_name secret_name)))
+  let create_new_secret verbose secret_name =
+    let () =
+      Edit.edit_secret ~verbose ~self_fallback:true secret_name ~allow_retry:true ~get_updated_secret:(fun initial ->
+          let initial_content = Option.value ~default:Secret.format_explainer initial in
+          Util.Editor.edit_with_validation ~initial:initial_content ~validate:validate_secret ())
     in
-    let secret_path = path_of_secret_name secret_name in
-    let original_recipients = Storage.Secrets.get_recipients_from_path_exn secret_path in
+    let original_recipients = Storage.Secrets.(get_recipients_from_path_exn @@ to_path secret_name) in
     Edit.show_recipients_notice_if_true (original_recipients = []);
-    if%lwt Prompt.yesno "Edit recipients for this secret?" then Edit.edit_recipients secret_name
+    if yesno "Edit recipients for this secret?" then edit_recipients secret_name
 
-  let create_new_secret' secret_name = Create.invariant_create ~create_new_secret secret_name
+  let create_new_secret' secret_name =
+    if Storage.Secrets.secret_exists secret_name then
+      Shell.die "E: refusing to create: a secret by that name already exists"
+    else (
+      let path = Storage.Secrets.(to_path secret_name) in
+      let () = Invariant.die_if_invariant_fails ~op_string:"create" path in
+      create_new_secret false secret_name)
 
   let new_ =
     let doc = "interactive creation of a new single-line secret" in
     let info = Cmd.info "new" ~doc in
-    let term = main_run Term.(const create_new_secret' $ Flags.secret_name) in
+    let term = Term.(const create_new_secret' $ Flags.secret_name) in
     Cmd.v info term
 end
 
 module Realpath = struct
   let realpath paths =
     paths
-    |> Lwt_list.iter_s (fun path ->
+    |> List.iter (fun path ->
            let abs_path = Path.abs path in
            if Storage.Secrets.secret_exists_at path then (
              let secret_name = secret_name_of_path path in
-             Lwt_io.printl (show_path (Path.abs (Storage.Secrets.agefile_of_name secret_name))))
+             print_endline (show_path (Path.abs (Storage.Secrets.agefile_of_name secret_name))))
            else if Path.is_directory abs_path then (
              let str = show_path abs_path in
              if Path.is_dot (Path.build_rel_path (show_path path)) then
-               Lwt_io.printl (Lazy.force Storage.Secrets.base_dir ^ "/")
-             else Lwt_io.printl (str ^ if String.ends_with ~suffix:"/" str then "" else "/"))
-           else Lwt_io.eprintf "W: real path of secret/folder %S not found\n" (show_path path))
+               print_endline (Lazy.force Storage.Secrets.base_dir ^ "/")
+             else print_endline (str ^ if String.ends_with ~suffix:"/" str then "" else "/"))
+           else Printf.eprintf "W: real path of secret/folder %S not found\n" (show_path path))
 
   let realpath =
     let doc =
       "show the full filesystem path to secrets/folders.  Note it will only list existing files or directories."
     in
     let info = Cmd.info "realpath" ~doc in
-    let term = main_run Term.(const (fun () -> realpath) $ Flags.set_verbosity $ Flags.secrets_paths) in
+    let term = Term.(const realpath $ Flags.secrets_paths) in
     Cmd.v info term
 end
 
 module Refresh = struct
-  let refresh_secrets paths =
+  let refresh_secrets ?(verbose = false) paths =
     let secrets =
       List.fold_left
         (fun acc path ->
@@ -1082,69 +675,58 @@ module Refresh = struct
         [] paths
     in
     let secrets = List.sort_uniq Storage.Secret_name.compare secrets in
-    Storage.Secrets.refresh ~verbose:(!verbosity = Verbose) secrets
+    Storage.Secrets.refresh ~verbose secrets
 
   let refresh =
     let doc = "re-encrypt secrets in the specified path(s)" in
     let info = Cmd.info "refresh" ~doc in
-    let term = main_run Term.(const (fun () -> refresh_secrets) $ Flags.set_verbosity $ Flags.secrets_paths) in
+    let term = Term.(const (fun verbose -> refresh_secrets ~verbose) $ Flags.verbose $ Flags.secrets_paths) in
     Cmd.v info term
 end
 
 module Replace = struct
   let replace_secret secret_name =
-    let recipients = Storage.Secrets.(get_recipients_from_path_exn @@ to_path secret_name) in
-    match recipients with
-    | [] ->
-      Shell.die
-        {|E: No recipients found (use "passage {create,new} folder/new_secret_name" to use recipients associated with $PASSAGE_IDENTITY instead)|}
-        (show_name secret_name)
-    | _ ->
-      Invariant.run_if_recipient ~op_string:"replace secret" ~path:(path_of_secret_name secret_name) ~f:(fun () ->
-          let%lwt () = Prompt.input_help_if_user_input () in
-          (* We don't need to run validation for the input here since we will be replacing only the secret
-              and not the whole file *)
-          let%lwt new_secret_plaintext = Prompt.read_input_from_stdin () in
-          if new_secret_plaintext = "" then Shell.die "E: invalid input, empty secrets are not allowed.";
-          let is_singleline_secret =
-            (* New secret is single line if doesn't have a newline character or if it has only one,
-                at the end of the first line. This input isn't supposed to follow the storage format,
-               it only contains a secret and no comments *)
-            match String.split_on_char '\n' new_secret_plaintext with
-            | [ _ ] | [ _; "" ] -> true
-            | _ -> false
-          in
-          let%lwt updated_secret =
-            match Storage.Secrets.secret_exists secret_name with
-            | false ->
-              (* if the secret doesn't exist yet, create a new secret with the right format *)
-              Lwt.return
-                (match is_singleline_secret with
-                | true -> new_secret_plaintext
-                | false -> "\n\n" ^ new_secret_plaintext)
-            | true ->
-              (* if there is already a secret, recreate or replace it *)
-              let%lwt original_secret =
-                try%lwt
-                  let%lwt secret_plaintext = Storage.Secrets.decrypt_exn ~silence_stderr:true secret_name in
-                  Lwt.return @@ Secret.Validation.parse_exn secret_plaintext
-                with _e ->
-                  Shell.die
-                    "E: unable to parse secret %s's format. If we proceed, the comments will be lost. Aborting. Please \
-                     use the edit command to replace and fix this secret."
-                    (show_name secret_name)
-              in
-              Lwt.return
-                (match is_singleline_secret with
-                | true ->
-                  Secret.singleline_from_text_description new_secret_plaintext
-                    (Option.value ~default:"" original_secret.comments)
-                | false ->
-                  Secret.multiline_from_text_description new_secret_plaintext
-                    (Option.value ~default:"" original_secret.comments))
-          in
-          try%lwt Encrypt.encrypt_exn ~plaintext:updated_secret ~secret_name recipients
-          with exn -> Shell.die ~exn "E: encrypting %s failed" (show_name secret_name))
+    let recipients = Util.Recipients.get_recipients_or_die secret_name in
+    Invariant.run_if_recipient ~op_string:"replace secret"
+      ~path:Storage.Secrets.(to_path secret_name)
+      ~f:(fun () ->
+        let () = input_help_if_user_input () in
+        (* We don't need to run validation for the input here since we will be replacing only the secret
+            and not the whole file *)
+        let new_secret_plaintext = In_channel.input_all stdin in
+        if new_secret_plaintext = "" then Shell.die "E: invalid input, empty secrets are not allowed.";
+        let is_singleline_secret =
+          (* New secret is single line if doesn't have a newline character or if it has only one,
+              at the end of the first line. This input isn't supposed to follow the storage format,
+             it only contains a secret and no comments *)
+          match String.split_on_char '\n' new_secret_plaintext with
+          | [ _ ] | [ _; "" ] -> true
+          | _ -> false
+        in
+        let updated_secret =
+          match Storage.Secrets.secret_exists secret_name with
+          | false ->
+            (* if the secret doesn't exist yet, create a new secret with the right format *)
+            (match is_singleline_secret with
+            | true -> new_secret_plaintext
+            | false -> "\n\n" ^ new_secret_plaintext)
+          | true ->
+            (* if there is already a secret, recreate or replace it *)
+            let original_secret =
+              try
+                let secret_plaintext = Storage.Secrets.decrypt_exn ~silence_stderr:true secret_name in
+                Secret.Validation.parse_exn secret_plaintext
+              with _e ->
+                Shell.die
+                  "E: unable to parse secret %s's format. If we proceed, the comments will be lost. Aborting. Please \
+                   use the edit command to replace and fix this secret."
+                  (show_name secret_name)
+            in
+            reconstruct_with_new_text ~is_singleline:is_singleline_secret ~new_text:new_secret_plaintext
+              ~existing_comments:original_secret.comments
+        in
+        try Encrypt.encrypt_exn ~verbose:false ~plaintext:updated_secret ~secret_name recipients
+        with exn -> Shell.die ~exn "E: encrypting %s failed" (show_name secret_name))
 
   let replace =
     let doc =
@@ -1152,72 +734,40 @@ module Replace = struct
        created as a single or multi-line secret WITHOUT any comments"
     in
     let info = Cmd.info "replace" ~doc in
-    let term = main_run Term.(const replace_secret $ Flags.secret_name) in
+    let term = Term.(const replace_secret $ Flags.secret_name) in
     Cmd.v info term
 end
 
 module Replace_comments = struct
   let replace_comment secret_name =
-    let recipients = Storage.Secrets.(get_recipients_from_path_exn @@ to_path secret_name) in
     let secret_name_str = show_name secret_name in
-    match recipients with
-    | [] ->
-      Shell.die
-        {|E: No recipients found (use "passage {create,new} folder/new_secret_name" to use recipients associated with $PASSAGE_IDENTITY instead)|}
-        secret_name_str
-    | _ ->
-      Invariant.run_if_recipient ~op_string:"replace comments" ~path:(path_of_secret_name secret_name) ~f:(fun () ->
-          let%lwt updated_secret =
-            match Storage.Secrets.secret_exists secret_name with
-            | false -> Shell.die "E: no such secret: %s" secret_name_str
-            | true ->
-              let%lwt original_secret =
-                try%lwt
-                  let%lwt original_secret_plaintext = Storage.Secrets.decrypt_exn ~silence_stderr:true secret_name in
-                  Lwt.return @@ Secret.Validation.parse_exn original_secret_plaintext
-                with _e ->
-                  Shell.die
-                    "E: unable to parse secret %s's format. Please fix it before replacing the comments,or use the \
-                     edit command"
-                    secret_name_str
-              in
-              let get_comments_from_stdin () =
-                let%lwt () =
-                  Prompt.input_help_if_user_input
-                    ~msg:"Please type the new comments and then do Ctrl+d twice to terminate input" ()
-                in
-                let%lwt new_comments = Prompt.read_input_from_stdin () in
-                match Prompt.validate_comments new_comments with
-                | Error e -> Shell.die "The comments are in an invalid format: %s" e
-                | _ -> Lwt.return new_comments
-              in
-              let get_comments_from_editor () =
-                match%lwt
-                  Prompt.input_and_validate_loop ~validate:Prompt.validate_comments ?initial:original_secret.comments
-                    (Edit.new_text_from_editor ~name:(show_name secret_name))
-                with
-                | Error e -> Shell.die "The comments are in an invalid format: %s" e
-                | Ok secret -> Lwt.return secret
-              in
-              let%lwt new_comments =
-                match Prompt.is_TTY with
-                | false -> get_comments_from_stdin ()
-                | true -> get_comments_from_editor ()
-              in
-              let updated_secret =
-                match original_secret.kind with
-                | Secret.Singleline -> Secret.singleline_from_text_description original_secret.text new_comments
-                | Secret.Multiline -> Secret.multiline_from_text_description original_secret.text new_comments
-              in
-              Lwt.return updated_secret
+    let recipients = Util.Recipients.get_recipients_or_die secret_name in
+    Invariant.run_if_recipient ~op_string:"replace comments"
+      ~path:Storage.Secrets.(to_path secret_name)
+      ~f:(fun () ->
+        match Storage.Secrets.secret_exists secret_name with
+        | false -> Shell.die "E: no such secret: %s" secret_name_str
+        | true ->
+          let original_secret =
+            try decrypt_and_parse ~silence_stderr:true secret_name
+            with _e ->
+              Shell.die
+                "E: unable to parse secret %s's format. Please fix it before replacing the comments,or use the edit \
+                 command"
+                secret_name_str
           in
-          try%lwt Encrypt.encrypt_exn ~plaintext:updated_secret ~secret_name recipients
-          with exn -> Shell.die ~exn "E: encrypting %s failed" secret_name_str)
+          let new_comments =
+            get_comments ?initial:original_secret.comments
+              ~help_message:"Please type the new comments and then do Ctrl+d twice to terminate input" ()
+          in
+          let updated_secret = reconstruct_secret ~comments:(Some new_comments) original_secret in
+          (try Encrypt.encrypt_exn ~verbose:false ~plaintext:updated_secret ~secret_name recipients
+           with exn -> Shell.die ~exn "E: encrypting %s failed" secret_name_str))
 
   let replace_comments =
     let doc = "replaces the comments of the specified secret, keeping the secret." in
     let info = Cmd.info "replace-comment" ~doc in
-    let term = main_run Term.(const replace_comment $ Flags.secret_name) in
+    let term = Term.(const replace_comment $ Flags.secret_name) in
     Cmd.v info term
 end
 
@@ -1226,62 +776,60 @@ module Rm = struct
     let doc = "Delete secrets and folders without asking for confirmation" in
     Arg.(value & flag & info [ "f"; "force" ] ~doc)
 
-  let rm_secrets paths force =
-    Lwt_list.iter_s
+  let rm_secrets ?(verbose = false) paths force =
+    List.iter
       (fun path ->
         let is_directory = Path.is_directory (Path.abs path) in
-        match Storage.Secrets.secret_exists_at path, is_directory with
+        (match Storage.Secrets.secret_exists_at path, is_directory with
         | false, false -> Shell.die "E: no secrets exist at %s" (show_path path)
-        | _ ->
-          let string_path = show_path path in
-          let%lwt rm_result =
-            if force then Storage.Secrets.rm ~is_directory path
-            else (
-              match%lwt Prompt.yesno_tty_check (sprintf "Are you sure you want to delete %s?" string_path) with
-              | NoTTY | TTY true -> Storage.Secrets.rm ~is_directory path
-              | TTY false -> Lwt.return Storage.Secrets.Skipped)
-          in
-          (match rm_result with
-          | Storage.Secrets.Succeeded () -> verbose_eprintlf "I: removed %s" string_path
-          | Skipped -> eprintlf "I: skipped deleting %s" string_path
-          | Failed exn -> Shell.die "E: failed to delete %s : %s" string_path (Exn.to_string exn)))
+        | _ -> ());
+        let string_path = show_path path in
+        let rm_result =
+          if force then Storage.Secrets.rm ~is_directory path
+          else (
+            match yesno_tty_check (sprintf "Are you sure you want to delete %s?" string_path) with
+            | NoTTY | TTY true -> Storage.Secrets.rm ~is_directory path
+            | TTY false -> Storage.Secrets.Skipped)
+        in
+        match rm_result with
+        | Storage.Secrets.Succeeded () -> verbose_eprintlf ~verbose "I: removed %s" string_path
+        | Skipped -> Devkit.eprintfn "I: skipped deleting %s" string_path
+        | Failed exn -> Shell.die "E: failed to delete %s : %s" string_path (Exn.to_string exn))
       paths
 
   let rm =
     let doc = "remove a secret or a folder and its secrets" in
     let info = Cmd.info "rm" ~doc in
-    let term = main_run Term.(const (fun () -> rm_secrets) $ Flags.set_verbosity $ Flags.secrets_paths $ force) in
+    let term = Term.(const (fun verbose -> rm_secrets ~verbose) $ Flags.verbose $ Flags.secrets_paths $ force) in
     Cmd.v info term
 
   let delete =
     let doc = "same as the $(i,rm) cmd. Remove a secret or a folder and its secrets" in
     let info = Cmd.info "delete" ~doc in
-    let term = main_run Term.(const (fun () -> rm_secrets) $ Flags.set_verbosity $ Flags.secrets_paths $ force) in
+    let term = Term.(const (fun verbose -> rm_secrets ~verbose) $ Flags.verbose $ Flags.secrets_paths $ force) in
     Cmd.v info term
 end
 
 module Search = struct
-  let search_secrets pattern path =
+  let search_secrets ?(verbose = false) pattern path =
     let secrets = Storage.Secrets.get_secrets_tree path |> List.sort Storage.Secret_name.compare in
-    let%lwt n_skipped, n_failed, n_matched, matched_secrets =
-      Lwt_list.fold_left_s
+    let n_skipped, n_failed, n_matched, matched_secrets =
+      List.fold_left
         (fun (n_skipped, n_failed, n_matched, matched_secrets) secret ->
-          match%lwt Storage.Secrets.search secret pattern with
-          | Succeeded true -> Lwt.return (n_skipped, n_failed, n_matched + 1, secret :: matched_secrets)
-          | Succeeded false -> Lwt.return (n_skipped, n_failed, n_matched, matched_secrets)
+          match Storage.Secrets.search secret pattern with
+          | Succeeded true -> n_skipped, n_failed, n_matched + 1, secret :: matched_secrets
+          | Succeeded false -> n_skipped, n_failed, n_matched, matched_secrets
           | Skipped ->
-            let%lwt () = verbose_eprintlf "I: skipped %s" (show_name secret) in
-            Lwt.return (n_skipped + 1, n_failed, n_matched, matched_secrets)
+            verbose_eprintlf ~verbose "I: skipped %s" (show_name secret);
+            n_skipped + 1, n_failed, n_matched, matched_secrets
           | Failed exn ->
-            let%lwt () = eprintlf "W: failed to search %s : %s" (show_name secret) (Exn.to_string exn) in
-            Lwt.return (n_skipped, n_failed + 1, n_matched, matched_secrets))
+            Devkit.eprintfn "W: failed to search %s : %s" (show_name secret) (Exn.to_string exn);
+            n_skipped, n_failed + 1, n_matched, matched_secrets)
         (0, 0, 0, []) secrets
     in
-    let%lwt () =
-      Lwt_io.printlf "I: skipped %d secrets, failed to search %d secrets and matched %d secrets" n_skipped n_failed
-        n_matched
-    in
-    List.rev matched_secrets |> Lwt_list.iter_s (fun s -> Lwt_io.printl (show_name s))
+    List.rev matched_secrets |> List.iter (fun s -> print_endline (show_name s));
+    Printf.eprintf "I: skipped %d secrets, failed to search %d secrets and matched %d secrets\n" n_skipped n_failed
+      n_matched
 
   let search =
     let pattern =
@@ -1292,20 +840,29 @@ module Search = struct
       let doc = "the relative $(docv) from the secrets directory that will be searched" in
       Arg.(value & pos 1 Converters.path_arg (Path.inject ".") & info [] ~docv:"PATH" ~doc)
     in
-    let term = main_run Term.(const (fun () -> search_secrets) $ Flags.set_verbosity $ pattern $ secrets_path) in
+    let term = Term.(const (fun verbose -> search_secrets ~verbose) $ Flags.verbose $ pattern $ secrets_path) in
     let doc = "list secrets in the specified path, containing contents that match the specified pattern" in
     let info = Cmd.info "search" ~doc in
     Cmd.v info term
 end
 
 module Show = struct
+  type show_mode =
+    | ShowSecret
+    | ShowTree
+
   let list_secrets_tree path =
     let full_path = Path.abs path in
-    match Path.is_directory full_path, Storage.Secrets.secret_exists_at path with
-    | false, true -> Get.cat (secret_name_of_path path) Stdout None
-    | false, false -> Shell.die "No secrets at this path : %s" (show_path full_path)
-    | true, _ ->
-      let%lwt tree = Dirtree.of_path (Path.to_fpath full_path) in
+    let path, show_mode =
+      match Path.is_directory full_path, Storage.Secrets.secret_exists_at path with
+      | false, true -> path, ShowSecret
+      | false, false -> Shell.die "No secrets at this path : %s" (show_path full_path)
+      | true, _ -> path, ShowTree
+    in
+    match show_mode with
+    | ShowSecret -> Get.cat (secret_name_of_path path) Stdout None
+    | ShowTree ->
+      let tree = Dirtree.of_path (Path.to_fpath (Path.abs path)) in
       Dirtree.pp tree
 
   let show =
@@ -1314,7 +871,7 @@ module Show = struct
        cat command."
     in
     let info = Cmd.info "show" ~doc in
-    let term = main_run Term.(const list_secrets_tree $ Flags.secrets_path) in
+    let term = Term.(const list_secrets_tree $ Flags.secrets_path) in
     Cmd.v info term
 end
 
@@ -1323,20 +880,18 @@ module Subst = struct
     let doc = "a template on the commandline" in
     Arg.(required & pos 0 (some Converters.template_arg) None & info [] ~doc ~docv:"TEMPLATE_ARG")
 
-  let substitute template =
-    try%lwt Template.substitute ~template () with exn -> Shell.die ~exn "E: failed to substitute"
+  let substitute template = try Template.substitute ~template () with exn -> Shell.die ~exn "E: failed to substitute"
 
   let subst =
     let doc = "fill in values in the provided template" in
     let info = Cmd.info "subst" ~doc in
-    let term = main_run Term.(const substitute $ template) in
+    let term = Term.(const substitute $ template) in
     Cmd.v info term
 end
 
 module Template_cmd = struct
   let substitute_template template_file target_file =
-    try%lwt Template.substitute_file ~template_file ~target_file
-    with exn -> Shell.die ~exn "E: failed to substitute file"
+    try Template.substitute_file ~template_file ~target_file with exn -> Shell.die ~exn "E: failed to substitute file"
 
   let target_file =
     let doc = "the target file for templating if present, otherwise output to standard output" in
@@ -1345,7 +900,7 @@ module Template_cmd = struct
   let template =
     let doc = "outputs target file by substituting all secrets in the template file" in
     let info = Cmd.info "template" ~doc in
-    let term = main_run Term.(const substitute_template $ Flags.template_file $ target_file) in
+    let term = Term.(const substitute_template $ Flags.template_file $ target_file) in
     Cmd.v info term
 end
 
@@ -1375,54 +930,26 @@ module What = struct
     let doc = "the names of the recipients. Can be one or many" in
     Arg.(value & pos_all string [] & info [] ~docv:"PATH" ~doc)
 
-  let list_recipient_secrets recipients_names =
-    if recipients_names = [] then Shell.die "E: Must specify at least one recipient name";
-    let number_of_recipients = List.length recipients_names in
-    let all_recipient_names = Storage.Keys.all_recipient_names () in
-    Lwt_list.iter_s
-      (fun recipient_name ->
-        let open Storage in
-        match List.mem recipient_name all_recipient_names, Age.is_group_recipient recipient_name with
-        | false, false -> eprintlf "E: no such recipient %s" recipient_name
-        | _ ->
-        match Secrets.get_secrets_for_recipient recipient_name with
-        | [] -> eprintlf "\nNo secrets found for %s" recipient_name
-        | secrets ->
-          let%lwt () =
-            if number_of_recipients > 1 then eprintlf "\nSecrets which %s is a recipient of:" recipient_name
-            else Lwt.return_unit
-          in
-          let sorted = List.sort Secret_name.compare secrets in
-          let print_secret secret =
-            match !verbosity with
-            | Normal -> Lwt_io.printl (show_name secret)
-            | Verbose ->
-              (try%lwt
-                 let%lwt plaintext = Storage.Secrets.decrypt_exn ~silence_stderr:true secret in
-                 Lwt_io.printl @@ Secret.Validation.validity_to_string (show_name secret) plaintext
-               with _ -> Lwt_io.printlf "🚨 %s [ WARNING: failed to decrypt ]" (show_name secret))
-          in
-          let%lwt () = Lwt_list.iter_s print_secret sorted in
-          Lwt_io.(flush stderr))
-      recipients_names
-
   let what =
     let doc = "list secrets that a recipient has access to" in
     let info = Cmd.info "what" ~doc in
-    let term = main_run Term.(const (fun () -> list_recipient_secrets) $ Flags.set_verbosity $ recipient_name) in
+    let term =
+      Term.(
+        const (fun names verbose -> Recipients.list_recipient_secrets ~verbose names) $ recipient_name $ Flags.verbose)
+    in
     Cmd.v info term
 end
 
 module My = struct
   let list_my_secrets () =
-    let%lwt recipients_of_own_id = Storage.Secrets.recipients_of_own_id () in
+    let recipients_of_own_id = Storage.Secrets.recipients_of_own_id () in
     let recipients_names = List.map (fun r -> r.Age.name) recipients_of_own_id in
-    What.list_recipient_secrets recipients_names
+    Recipients.list_recipient_secrets ~verbose:false recipients_names
 
   let my =
     let doc = "list secrets that you have access to (alias for 'what <your.name>')" in
     let info = Cmd.info "my" ~doc in
-    let term = main_run Term.(const (fun () -> list_my_secrets) $ Flags.set_verbosity $ const ()) in
+    let term = Term.(const list_my_secrets $ const ()) in
     Cmd.v info term
 end
 
@@ -1447,41 +974,41 @@ module Who = struct
       Storage.Secrets.recipients_of_group_name ~map_fn:Storage.Secrets.recipient_of_name string_path
       |> print_from_recipient_list
     | false ->
-    match Storage.Secrets.secret_exists_at path || Storage.Secrets.get_secrets_tree path <> [] with
-    | false -> Shell.die "E: no such secret %s" (show_path path)
-    | true ->
-    match expand_groups with
-    | true ->
-      (match Storage.Secrets.get_recipients_from_path_exn path with
-      | exception exn -> Shell.die ~exn "E: failed to get recipients"
+      (match Storage.Secrets.secret_exists_at path || Storage.Secrets.get_secrets_tree path <> [] with
+      | false -> Shell.die "E: no such secret %s" (show_path path)
+      | true -> ());
+      (match expand_groups with
+      | true ->
+        (match Storage.Secrets.get_recipients_from_path_exn path with
+        | exception exn -> Shell.die ~exn "E: failed to get recipients"
+        | [] -> Shell.die "E: no recipients found for %s" (show_path path)
+        | recipients -> print_from_recipient_list recipients)
+      | false ->
+      match Storage.Secrets.get_recipients_names path with
       | [] -> Shell.die "E: no recipients found for %s" (show_path path)
-      | recipients -> print_from_recipient_list recipients)
-    | false ->
-    match Storage.Secrets.get_recipients_names path with
-    | [] -> Shell.die "E: no recipients found for %s" (show_path path)
-    | recipients_names ->
-      List.iter
-        (fun recipient_name ->
-          let recipient_keys =
-            match Age.is_group_recipient recipient_name with
-            | false -> Storage.Keys.keys_of_recipient recipient_name
-            | true ->
-            try
-              (* we don't need the group recipients, just to know that there are some *)
-              let (_ : Age.recipient list) =
-                Storage.Secrets.recipients_of_group_name ~map_fn:Storage.Secrets.recipient_of_name recipient_name
-              in
-              [ Age.Key.inject "" ]
-            with exn ->
-              Devkit.printfn "E: couldn't retrieve recipients for group %s. Reason: %s" recipient_name
-                (Printexc.to_string exn);
-              []
-          in
-          (match recipient_keys with
-          | [] -> Devkit.eprintfn "W: no keys found for %s" recipient_name
-          | _ -> ());
-          print_endline recipient_name)
-        recipients_names
+      | recipients_names ->
+        List.iter
+          (fun recipient_name ->
+            let recipient_keys =
+              match Age.is_group_recipient recipient_name with
+              | false -> Storage.Keys.keys_of_recipient recipient_name
+              | true ->
+              try
+                (* we don't need the group recipients, just to know that there are some *)
+                let (_ : Age.recipient list) =
+                  Storage.Secrets.recipients_of_group_name ~map_fn:Storage.Secrets.recipient_of_name recipient_name
+                in
+                [ Age.Key.inject "" ]
+              with exn ->
+                Devkit.printfn "E: couldn't retrieve recipients for group %s. Reason: %s" recipient_name
+                  (Printexc.to_string exn);
+                []
+            in
+            (match recipient_keys with
+            | [] -> Devkit.eprintfn "W: no keys found for %s" recipient_name
+            | _ -> ());
+            print_endline recipient_name)
+          recipients_names)
 
   let who =
     let doc = "list all recipients of secrets in the specified path" in

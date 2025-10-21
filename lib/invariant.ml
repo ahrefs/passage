@@ -7,26 +7,23 @@ let get_expanded_recipient_names_from_folder path =
   with _ -> []
 
 let error_not_recipient ~op_string path =
-  let show_path p = Path.project p in
   let base_folder = Path.folder_of_path path in
-  let%lwt () =
-    Lwt_io.eprintlf "E: user is not a recipient of %s. Please ask one of the following to add you as a recipient:"
-      (show_path base_folder)
+  let () =
+    Printf.eprintf "E: user is not a recipient of %s. Please ask one of the following to add you as a recipient:\n"
+      (Util.Show.show_path base_folder)
   in
   let expanded_recipients = get_expanded_recipient_names_from_folder base_folder in
-  let%lwt () = Lwt_list.iter_s (Lwt_io.eprintlf "  %s") expanded_recipients in
+  let () = List.iter (Printf.eprintf "  %s\n") expanded_recipients in
   die ~op_string
 
 let user_is_listed_as_recipient path =
   let open Storage.Secrets in
   let folder_recipients = get_recipients_from_path_exn path in
-  let%lwt own_recipients = recipients_of_own_id () in
-  Lwt_list.exists_p
-    (fun (own_recipient : Age.recipient) -> Lwt.return @@ List.mem own_recipient folder_recipients)
-    own_recipients
+  let own_recipients = recipients_of_own_id () in
+  List.exists (fun (own_recipient : Age.recipient) -> List.mem own_recipient folder_recipients) own_recipients
 
 let run_if_recipient ~op_string ~path ~f =
-  match%lwt user_is_listed_as_recipient path with
+  match user_is_listed_as_recipient path with
   | false -> error_not_recipient ~op_string path
   | true -> f ()
 
@@ -34,30 +31,29 @@ let die_if_invariant_fails ~op_string path =
   let open Storage.Secrets in
   (* If the secret's folder doesn't exist yet or is empty, there's no invariant to check, allow the operation *)
   let full_path = path |> Path.folder_of_path |> Path.abs in
-  if (not (Path.is_directory full_path)) || FileUtil.ls (Path.project full_path) = [] then Lwt.return_unit
+  if (not (Path.is_directory full_path)) || FileUtil.ls (Path.project full_path) = [] then ()
   else (
     (* check if i am listed on the .keys file, return early *)
-    let show_path p = Path.project p in
-    let show_name name = Storage.Secret_name.project name in
     let base_folder = Path.folder_of_path path in
-    match%lwt user_is_listed_as_recipient path with
+    match user_is_listed_as_recipient path with
     | false -> error_not_recipient ~op_string path
     | true ->
       (* if i am listed on the .keys file, check if i can decrypt all the secrets in the folder *)
-      let%lwt fails_invariant =
-        Lwt_list.exists_s
+      let fails_invariant =
+        List.exists
           (fun s ->
-            try%lwt
-              let%lwt (_decrypted : string) = decrypt_exn ~silence_stderr:true s in
-              Lwt.return false
+            try
+              let (_decrypted : string) = Util.Secret.decrypt_silently s in
+              false
             with _e ->
-              let%lwt () =
-                Lwt_io.eprintlf
+              let () =
+                let open Util.Show in
+                Printf.eprintf
                   "E: user is recipient of %s, but failed to decrypt %s. Please ask some user to refresh the whole \
-                   folder."
+                   folder.\n"
                   (show_path base_folder) (show_name s)
               in
-              Lwt.return true)
+              true)
           (get_secrets_in_folder base_folder)
       in
-      if fails_invariant then die ~op_string else Lwt.return_unit)
+      if fails_invariant then die ~op_string else ())

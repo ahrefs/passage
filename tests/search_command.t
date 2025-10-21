@@ -9,13 +9,13 @@ Set up secrets with comments
 
 No path specified - should search all secrets and list secrets with comments
   $ passage search "comment"
-  I: skipped 4 secrets, failed to search 0 secrets and matched 3 secrets
   secret_ghi
   secret_jkl
   secret_mno
+  I: skipped 4 secrets, failed to search 0 secrets and matched 3 secrets
   $ passage search "abc"
-  I: skipped 4 secrets, failed to search 0 secrets and matched 1 secrets
   secret_abc
+  I: skipped 4 secrets, failed to search 0 secrets and matched 1 secrets
 
 Path specified - should search only in specified path
   $ passage search "comment" 00
@@ -27,10 +27,10 @@ Regex specified as pattern  - should list all multiline secrets
   I: skipped 01/00/secret2
   I: skipped 03/secret1
   I: skipped 05/secret1
-  I: skipped 4 secrets, failed to search 0 secrets and matched 3 secrets
   secret_def
   secret_jkl
   secret_mno
+  I: skipped 4 secrets, failed to search 0 secrets and matched 3 secrets
 
 Invalid regex specified as pattern
   $ passage search "["

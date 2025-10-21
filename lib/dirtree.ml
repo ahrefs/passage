@@ -16,24 +16,24 @@ let ext_filt ext base nm sub =
   let s = Fpath.to_string full in
   try
     if Sys.is_directory s then (
-      let%lwt sf = sub full in
-      Lwt.return @@ Some (nm, D sf))
+      let sf = sub full in
+      Some (nm, D sf))
     else if FileUtil.test FileUtil.Is_file s && Fpath.has_ext ext full then (
       let name = name_of_file (Path.of_fpath full) in
-      let%lwt res =
-        try%lwt
-          let%lwt self_key = Lazy.force self_key in
+      let res =
+        try
+          let self_key = Lazy.force self_key in
           match is_recipient_of_secret self_key name with
-          | false -> Lwt.return Skipped
+          | false -> Skipped
           | true ->
-            (match%lwt decrypt_exn ~silence_stderr:true name with
-            | exception exn -> Lwt.return (Failed exn)
-            | _ -> Lwt.return (Succeeded ()))
-        with _ -> Lwt.return Skipped
+          match decrypt_exn ~silence_stderr:true name with
+          | exception exn -> Failed exn
+          | _ -> Succeeded ()
+        with _ -> Skipped
       in
-      Lwt.return @@ Some (Fpath.(to_string @@ rem_ext (v nm)), F res))
-    else Lwt.return None
-  with _ -> Lwt.return None
+      Some (Fpath.(to_string @@ rem_ext (v nm)), F res))
+    else None
+  with _ -> None
 
 let filt = ext_filt ext
 
@@ -41,10 +41,10 @@ let of_path path =
   let rec sub p =
     let names = Sys.readdir (Fpath.to_string p) in
     Array.sort compare names;
-    names |> Array.to_list |> Lwt_list.filter_map_s (fun v -> filt p v sub)
+    names |> Array.to_list |> List.filter_map (fun v -> filt p v sub)
   in
-  let%lwt sp = sub path in
-  Lwt.return @@ Top (Fpath.to_string path, D sp)
+  let sp = sub path in
+  Top (Fpath.to_string path, D sp)
 
 let bar = "│   "
 let mid = "├── "
@@ -61,15 +61,15 @@ let to_pref_str is_last_l =
   | v :: rest -> if v then p_aux [ el ] rest else p_aux [ mid ] rest
   | [] -> ""
 
-let p d = Lwt_io.printf "%s%s\n" (to_pref_str d)
+let p d = printf "%s%s\n" (to_pref_str d)
 
 (* call a different function for the last item *)
 let rec iter_but_one f lastf l =
   match l with
-  | [] -> Lwt.return_unit
+  | [] -> ()
   | [ i ] -> lastf i
   | i :: rest ->
-    let%lwt () = f i in
+    let () = f i in
     iter_but_one f lastf rest
 
 let red = "31"
@@ -86,12 +86,12 @@ let rec pp_node d n =
     | Failed _ -> p d (color red nm)
     | _ -> p d nm)
   | nm, D nl ->
-    let%lwt () = p d (color blue nm) in
+    let () = p d (color blue nm) in
     iter_but_one (pp_node (false :: d)) (pp_node (true :: d)) nl
 
 let pp t =
   match t with
   | Top (_, D l) ->
-    let%lwt () = Lwt_io.printl "." in
+    let () = printf ".\n" in
     iter_but_one (pp_node [ false ]) (pp_node [ true ]) l
-  | Top (_, F _) -> Lwt.return_unit
+  | Top (_, F _) -> ()

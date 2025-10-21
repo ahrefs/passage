@@ -22,8 +22,9 @@
  (synopsis "Passage - used to store and manage access to shared secrets")
  (description "Passage - used to store and manage access to shared secrets")
  (depends
+  bos
   (cmdliner
-   (>= 1.1.0))
+   (< 2.0.0))
   (ocaml
    (>= 4.14))
   conf-age
@@ -33,8 +34,6 @@
   extunix
   fileutils
   fpath
-  lwt
-  lwt_ppx
   (menhir
    (>= 20231231))
   ppx_expect

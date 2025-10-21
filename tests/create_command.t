@@ -40,13 +40,13 @@ Should succeed - handle secrets with comments too
 
 Should fail - create secret with wrong format
   $ echo "" | passage create new/empty
-  This secret is in an invalid format: empty secrets are not allowed
+  E: this secret is in an invalid format: empty secrets are not allowed
   [1]
   $ printf "secret\ncomment" | passage create new/legacy-single-line
-  This secret is in an invalid format: single-line secrets with comments should have an empty line between the secret and the comments.
+  E: this secret is in an invalid format: single-line secrets with comments should have an empty line between the secret and the comments.
   [1]
   $ printf "\nsecret\ncomment" | passage create new/multi-line-no-secret
-  This secret is in an invalid format: multiline: empty secret
+  E: this secret is in an invalid format: multiline: empty secret
   [1]
 
 Should fail - create secret in a directory where we are not a recipient (invariant)

@@ -43,13 +43,10 @@ EDIT - should allow everyone to edit an existing secret
   $ PASSAGE_IDENTITY=bobby.bob.key EDITOR=$OVERWRITE_WITH_BYE passage edit 04/secret1
   $ PASSAGE_IDENTITY=dobby.dob.key EDITOR=$OVERWRITE_WITH_BYE passage edit 04/secret1
   I: secret unchanged
-  [1]
   $ PASSAGE_IDENTITY=robby.rob.key EDITOR=$OVERWRITE_WITH_BYE passage edit 04/secret1
   I: secret unchanged
-  [1]
   $ PASSAGE_IDENTITY=tommy.tom.key EDITOR=$OVERWRITE_WITH_BYE passage edit 04/secret1
   I: secret unchanged
-  [1]
   $ passage get 04/secret1
   BYE
 
@@ -66,7 +63,7 @@ EDIT-WHO - should work as expected
   $ passage get 04/secret1
   age: error: no identity matched any of the recipients
   age: report unexpected or unhelpful errors at https://filippo.io/age/report
-  E: failed to decrypt 04/secret1 : Failure("age --decrypt --identity $TESTCASE_ROOT/bobby.bob.key : exit code 1")
+  E: failed to decrypt 04/secret1 : Failure("age --decrypt --identity '$TESTCASE_ROOT/bobby.bob.key' : exit code 1")
   [1]
   $ PASSAGE_IDENTITY=robby.rob.key passage get 04/secret1
   BYE

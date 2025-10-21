@@ -202,5 +202,5 @@ Should try to decrypt and fail if not a recipient of the secret
   $ passage show 01/00/secret2
   age: error: no identity matched any of the recipients
   age: report unexpected or unhelpful errors at https://filippo.io/age/report
-  E: failed to decrypt 01/00/secret2 : Failure("age --decrypt --identity $TESTCASE_ROOT/bobby.bob.key : exit code 1")
+  E: failed to decrypt 01/00/secret2 : Failure("age --decrypt --identity '$TESTCASE_ROOT/bobby.bob.key' : exit code 1")
   [1]

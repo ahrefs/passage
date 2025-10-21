@@ -56,7 +56,8 @@ Should succeed - no changes when removing non-existent recipients
   bobby.bob
   robby.rob
   $ passage rm-who 02/secret1 nonexistent.user
-  W: recipients not found: nonexistent.user
+  E: recipients not found: nonexistent.user
+  [1]
 
 Should succeed - warn about some non-existent recipients but remove others
   $ passage who 01/00/secret1
@@ -64,7 +65,7 @@ Should succeed - warn about some non-existent recipients but remove others
   poppy.pop
   robby.rob
   $ passage rm-who 01/00/secret1 poppy.pop nonexistent.user
-  W: recipients not found: nonexistent.user
+  W: recipients not found to remove: nonexistent.user
   I: refreshed 2 secrets, skipped 0, failed 0
   I: removed 1 recipient
   $ passage who 01/00/secret1

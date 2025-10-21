@@ -36,16 +36,16 @@ Should succeed - edit an existing secret
 
 Should fail - passing in malformed secrets
   $ EDITOR=$CLEAR_FILE passage edit 00/existing_secret
-  This secret is in an invalid format: empty secrets are not allowed
+  E: this secret is in an invalid format: empty secrets are not allowed
   [1]
   $ EDITOR=$MALFORMED_MULTILINE1 passage edit 00/existing_secret
-  This secret is in an invalid format: multiline: empty secret
+  E: this secret is in an invalid format: multiline: empty secret
   [1]
   $ EDITOR=$MALFORMED_MULTILINE2 passage edit 00/existing_secret
-  This secret is in an invalid format: multiline: empty secret
+  E: this secret is in an invalid format: multiline: empty secret
   [1]
   $ EDITOR=$LEGACY_SINGLELINE passage edit 00/existing_secret
-  This secret is in an invalid format: single-line secrets with comments should have an empty line between the secret and the comments.
+  E: this secret is in an invalid format: single-line secrets with comments should have an empty line between the secret and the comments.
   [1]
   $ passage get 00/existing_secret
   BYE
@@ -91,6 +91,5 @@ EDIT - should allow users of a group to edit an existing secret
   $ PASSAGE_IDENTITY=robby.rob.key EDITOR=$OVERWRITE_WITH_BYE passage edit 03/secret1
   $ PASSAGE_IDENTITY=tommy.tom.key EDITOR=$OVERWRITE_WITH_BYE passage edit 03/secret1
   I: secret unchanged
-  [1]
   $ PASSAGE_IDENTITY=robby.rob.key passage get 03/secret1
   BYE

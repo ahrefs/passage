@@ -78,7 +78,7 @@ Should fail - replacing an existing secret in a folder where we are NOT listed o
   $ passage get 01/00/secret1
   age: error: no identity matched any of the recipients
   age: report unexpected or unhelpful errors at https://filippo.io/age/report
-  E: failed to decrypt 01/00/secret1 : Failure("age --decrypt --identity $TESTCASE_ROOT/bobby.bob.key : exit code 1")
+  E: failed to decrypt 01/00/secret1 : Failure("age --decrypt --identity '$TESTCASE_ROOT/bobby.bob.key' : exit code 1")
   [1]
   $ cat<<EOF | passage replace 01/00/secret2
   > replaced secret line 1
@@ -93,7 +93,7 @@ Should fail - replacing an existing secret in a folder where we are NOT listed o
   $ passage cat 01/00/secret2
   age: error: no identity matched any of the recipients
   age: report unexpected or unhelpful errors at https://filippo.io/age/report
-  E: failed to decrypt 01/00/secret2 : Failure("age --decrypt --identity $TESTCASE_ROOT/bobby.bob.key : exit code 1")
+  E: failed to decrypt 01/00/secret2 : Failure("age --decrypt --identity '$TESTCASE_ROOT/bobby.bob.key' : exit code 1")
   [1]
 
 Should succeed - replacing a secret with comments, single and multi-line
@@ -185,7 +185,7 @@ Should fail - trying to replace a secret which one is not authorised to. (invari
   $ PASSAGE_IDENTITY=$UNAUTHORISED_USER.key passage get 00/new_secret_multiline
   age: error: no identity matched any of the recipients
   age: report unexpected or unhelpful errors at https://filippo.io/age/report
-  E: failed to decrypt 00/new_secret_multiline : Failure("age --decrypt --identity $TESTCASE_ROOT/unauthorised.key : exit code 1")
+  E: failed to decrypt 00/new_secret_multiline : Failure("age --decrypt --identity '$TESTCASE_ROOT/unauthorised.key' : exit code 1")
   [1]
   $ PASSAGE_IDENTITY="bobby.bob.key" passage get 00/new_secret_multiline
   replaced secret line 1

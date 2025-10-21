@@ -1,54 +1,54 @@
 open Printf
 
-let age = "age"
-
 let quote = Filename.quote
 
-let check_process_status raw_cmd status =
-  let fail reason signum = Devkit.Exn_lwt.fail "%s by signal %d: %s" reason signum raw_cmd in
-  match status with
-  | Unix.WEXITED 0 -> Lwt.return_unit
-  | WEXITED code -> Devkit.Exn_lwt.fail "%s : exit code %d" raw_cmd code
-  | WSIGNALED signum -> fail "killed" signum
-  | WSTOPPED signum -> fail "stopped" signum
+let run_cmd ?(stdin = Bos.OS.Cmd.in_stdin) ?(silence_stderr = false) ~stdout raw_command =
+  let stderr = if silence_stderr then Bos.OS.Cmd.err_null else Bos.OS.Cmd.err_stderr in
+  let cmd = Bos.Cmd.(v "/bin/sh" % "-c" % raw_command) in
+  match stdin |> Bos.OS.Cmd.run_io ~err:stderr cmd |> stdout with
+  | Ok (result, s) ->
+    (match s with
+    | _i, `Exited 0 -> result
+    | _i, `Exited n -> failwith (Printf.sprintf "%s : exit code %d" raw_command n)
+    | _, `Signaled n -> failwith (Printf.sprintf "%s : stopped %d" raw_command n))
+  | Error (`Msg m) -> failwith (Printf.sprintf "%s: %s" raw_command m)
 
-let exec ?stdin ?stdout ?stderr raw_cmd_fmt =
+let run_cmd_stdout ?(silence_stderr = false) raw_cmd_fmt =
   ksprintf
     (fun raw_cmd ->
-      let cmd = Lwt_process.shell raw_cmd in
-      let%lwt status = Lwt_process.exec ?stdin ?stdout ?stderr cmd in
-      check_process_status raw_cmd status)
+      let stdout s = Bos.OS.Cmd.out_stdout s in
+      run_cmd ~stdout ~silence_stderr raw_cmd)
     raw_cmd_fmt
 
-(* Reimplementation of Lwt_process.pread and Lwt_process.pread_line that throws exn when command fails to
-   execute properly (https://github.com/ocsigen/lwt/issues/216)
-*)
-let read_sh_cmd_wrapper raw_cmd_fmt read =
+let run_cmd_string ?(silence_stderr = false) raw_cmd_fmt =
+  ksprintf (fun raw_cmd -> run_cmd ~stdout:Bos.OS.Cmd.out_string ~silence_stderr raw_cmd) raw_cmd_fmt
+
+let run_cmd_first_line ?(silence_stderr = false) raw_cmd_fmt =
   ksprintf
     (fun raw_cmd ->
-      let cmd = Lwt_process.shell raw_cmd in
-      Lwt_process.with_process_in cmd (fun p ->
-          let%lwt status = p#status in
-          let%lwt () = check_process_status raw_cmd status in
-          read p#stdout))
+      let stdout s =
+        match Bos.OS.Cmd.out_lines s with
+        | Ok ([], status) -> Ok ("", status)
+        | Ok (line :: _, status) -> Ok (line, status)
+        | Error _ as e -> e
+      in
+      run_cmd ~stdout ~silence_stderr raw_cmd)
     raw_cmd_fmt
-let pread_sh_cmd raw_cmd_fmt = read_sh_cmd_wrapper raw_cmd_fmt Lwt_io.read
-let pread_line_sh_cmd raw_cmd_fmt = read_sh_cmd_wrapper raw_cmd_fmt Lwt_io.read_line
 
 let editor filename =
   let editor = Option.value (Sys.getenv_opt "EDITOR") ~default:"editor" in
-  exec "%s %s" (quote editor) (quote filename)
+  run_cmd_stdout "%s %s" (quote editor) (quote filename)
 
-let xclip_read_clipboard x_selection = pread_sh_cmd "xclip -o -selection %s 2>/dev/null" (quote x_selection)
+let xclip_read_clipboard x_selection = run_cmd_string ~silence_stderr:true "xclip -o -selection %s" (quote x_selection)
 
 let xclip_copy_to_clipboard s ~x_selection =
-  exec {|printf "%%s" %s | xclip -selection %s|} (quote s) (quote x_selection)
+  run_cmd_stdout {|printf "%%s" %s | xclip -selection %s|} (quote s) (quote x_selection)
 
 let clear_clipboard_managers () =
-  exec "qdbus org.kde.klipper /klipper org.kde.klipper.klipper.clearClipboardHistory &>/dev/null"
+  run_cmd_stdout ~silence_stderr:true "qdbus org.kde.klipper /klipper org.kde.klipper.klipper.clearClipboardHistory"
 
 (* return success even if no processes were killed *)
-let kill_processes proc_name = exec "pkill -f %s 2>/dev/null || true" (quote @@ "^" ^ proc_name)
+let kill_processes proc_name = run_cmd_stdout ~silence_stderr:true "pkill -f %s || true" (quote @@ "^" ^ proc_name)
 
 let die ?exn fmt =
   kfprintf
@@ -70,15 +70,8 @@ let age_generate_identity_key_root_group_exn id_name =
   let root_group_file = Filename.concat keys_dir "root.group" in
   FileUtil.touch root_group_file;
   (* create identity file and pub key *)
-  let identity_file = Filename.concat Config.base_dir "identity.key" in
-  let%lwt () = exec "age-keygen -o %s" identity_file in
-  exec "age-keygen -y %s >> %s/%s.%s" identity_file keys_dir id_name "pub"
+  let identity_file = quote @@ Filename.concat Config.base_dir "identity.key" in
+  let () = run_cmd_stdout "age-keygen -o %s" identity_file in
+  run_cmd_stdout "age-keygen -y %s >> %s/%s.%s" identity_file (quote keys_dir) (quote id_name) "pub"
 
-let age_get_recipient_key_from_identity_file identity_file = pread_line_sh_cmd "age-keygen -y %s" (quote identity_file)
-
-let age_encrypt ~stdin ~stdout recipient_keys =
-  let recipients_arg = List.map (fun key -> sprintf "--recipient %s" (quote key)) recipient_keys |> String.concat " " in
-  exec ~stdin ~stdout "%s --encrypt --armor %s" age recipients_arg
-
-let age_decrypt ~stdin ~stdout ?stderr identity_file =
-  exec ~stdin ~stdout ?stderr "%s --decrypt --identity %s" age identity_file
+let age_get_recipient_key_from_identity_file identity_file = run_cmd_first_line "age-keygen -y %s" (quote identity_file)

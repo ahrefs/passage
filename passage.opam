@@ -9,7 +9,8 @@ license: "MIT"
 homepage: "https://github.com/ahrefs/passage"
 bug-reports: "https://github.com/ahrefs/passage/issues"
 depends: [
-  "cmdliner" {>= "1.1.0"}
+  "bos"
+  "cmdliner" {< "2.0.0"}
   "ocaml" {>= "4.14"}
   "conf-age"
   "dune" {>= "3.9"}
@@ -17,8 +18,6 @@ depends: [
   "extunix"
   "fileutils"
   "fpath"
-  "lwt"
-  "lwt_ppx"
   "menhir" {>= "20231231"}
   "ppx_expect"
   "ocamlformat" {with-dev-setup & = "0.26.2"}

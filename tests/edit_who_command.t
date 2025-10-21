@@ -12,7 +12,7 @@ Should succeed - edit recipients when the user is a recipient of the folder. Ref
   $ PASSAGE_IDENTITY=robby.rob.key passage get 02/secret1
   age: error: no identity matched any of the recipients
   age: report unexpected or unhelpful errors at https://filippo.io/age/report
-  E: failed to decrypt 02/secret1 : Failure("age --decrypt --identity $TESTCASE_ROOT/robby.rob.key : exit code 1")
+  E: failed to decrypt 02/secret1 : Failure("age --decrypt --identity '$TESTCASE_ROOT/robby.rob.key' : exit code 1")
   [1]
   $ passage who 02/secret1
   bobby.bob
@@ -59,7 +59,7 @@ Should succeed - use path to edit recipients instead of secret name
   $ passage get 01/00/secret1
   age: error: no identity matched any of the recipients
   age: report unexpected or unhelpful errors at https://filippo.io/age/report
-  E: failed to decrypt 01/00/secret1 : Failure("age --decrypt --identity $TESTCASE_ROOT/bobby.bob.key : exit code 1")
+  E: failed to decrypt 01/00/secret1 : Failure("age --decrypt --identity '$TESTCASE_ROOT/bobby.bob.key' : exit code 1")
   [1]
   $ passage who 01/00
   poppy.pop
@@ -86,7 +86,7 @@ Should succeed - refresh after edits for groups - should work as expected
   $ passage get 03/secret1
   age: error: no identity matched any of the recipients
   age: report unexpected or unhelpful errors at https://filippo.io/age/report
-  E: failed to decrypt 03/secret1 : Failure("age --decrypt --identity $TESTCASE_ROOT/bobby.bob.key : exit code 1")
+  E: failed to decrypt 03/secret1 : Failure("age --decrypt --identity '$TESTCASE_ROOT/bobby.bob.key' : exit code 1")
   [1]
   $ PASSAGE_IDENTITY=robby.rob.key passage get 03/secret1
   (03/secret1) secret: single line
