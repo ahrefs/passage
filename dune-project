@@ -8,7 +8,7 @@
 
 (license "MIT")
 
-(version "0.1.7")
+(version "0.1.8")
 
 (source
  (github ahrefs/passage))
