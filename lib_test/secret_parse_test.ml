@@ -1,4 +1,4 @@
-open Passage
+open Passage.Make (Passage.Default_config)
 
 let parse s =
   try

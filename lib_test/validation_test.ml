@@ -1,4 +1,4 @@
-open Passage
+open Passage.Make (Passage.Default_config)
 
 let string_of_kind = function
   | Secret.Singleline -> "single-line"

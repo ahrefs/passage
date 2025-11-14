@@ -1,0 +1,20 @@
+module Make (Config : Types.Config) = struct
+  module Age = Age
+  module Comment_input = Comment_input
+  module Dirtree = Dirtree.With_config (Config)
+  module Invariant = Invariant
+  module Path = Path.With_config (Config)
+  module Prompt = Prompt
+  module Recipients = Recipients
+  module Retry = Retry
+  module Secret = Secret
+  module Shell = Shell
+  module Storage = Storage.With_config (Config)
+  module Template = Template
+  module Template_ast = Template_ast
+  module Template_lexer = Template_lexer
+  module Template_parser = Template_parser
+  module Util = Util.With_config (Config)
+  module Validation = Validation
+  module Config = Config
+end

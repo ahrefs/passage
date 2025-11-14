@@ -1,4 +1,4 @@
-open Passage
+open Passage.Make (Passage.Default_config)
 
 let pp ast = List.map Template_ast.to_string ast |> String.concat " " |> print_endline
 
