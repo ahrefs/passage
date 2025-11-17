@@ -45,67 +45,6 @@ let rewrite_recipients_file secret_name new_recipients_list =
     if secrets_affected <> [] then Storage.Secrets.refresh ~force:true ~verbose:false secrets_affected else ())
   else prerr_endline "I: no changes made to the recipients"
 
-let edit_recipients secret_name =
-  (* takes two sorted lists and returns three lists:
-      first is items unique to l1, second is items unique to l2, third is items in both l1 and l2.
-
-      Preserves the order in the outputs *)
-  let diff_intersect_lists l1 r1 =
-    let rec diff accl accr accb left right =
-      match left, right with
-      | [], [] -> List.rev accl, List.rev accr, List.rev accb
-      | [], rh :: rt -> diff accl (rh :: accr) accb [] rt
-      | lh :: lt, [] -> diff (lh :: accl) accr accb lt []
-      | lh :: lt, rh :: rt ->
-        let comp = compare lh rh in
-        if comp < 0 then diff (lh :: accl) accr accb lt right
-        else if comp > 0 then diff accl (rh :: accr) accb left rt
-        else diff accl accr (lh :: accb) lt rt
-    in
-    diff [] [] [] l1 r1
-  in
-  let path_to_secret = path_of_secret_name secret_name in
-  let sorted_base_recipients =
-    try Storage.Secrets.get_recipients_names path_to_secret with exn -> Util.Secret.die_failed_get_recipients ~exn ""
-  in
-  let recipients_groups, current_recipients_names = sorted_base_recipients |> List.partition Age.is_group_recipient in
-  let left, right, common = diff_intersect_lists current_recipients_names (Storage.Keys.all_recipient_names ()) in
-  let all_available_groups = Storage.Secrets.all_groups_names () |> List.map (fun g -> "@" ^ g) in
-  let unused_groups = List.filter (fun g -> not (List.mem g recipients_groups)) all_available_groups in
-  let recipient_lines =
-    (if recipients_groups = [] then [] else ("# Groups " :: recipients_groups) @ [ "" ])
-    @ ("# Recipients " :: common)
-    @ [ "" ]
-    @ (if left = [] then [] else "#" :: "# Warning, unknown recipients below this line " :: "#" :: left)
-    @ "#"
-      :: "# Uncomment recipients below to add them. You can also add valid groups names if you want."
-      :: "#"
-      ::
-      (if unused_groups = [] then []
-       else ("# Available groups:" :: List.map (fun g -> "# " ^ g) unused_groups) @ [ "#" ])
-    @ if right = [] then [] else "# Available users:" :: List.map (fun r -> "# " ^ r) right
-  in
-  let initial_content =
-    match recipient_lines with
-    | [] -> ""
-    | lines -> String.concat "\n" lines ^ "\n"
-  in
-  let validate_recipients content =
-    (* Parse recipients from input, filtering out comments and empty lines *)
-    let recipients_list =
-      String.split_on_char '\n' content
-      |> List.filter_map (fun line ->
-             let trimmed = String.trim line in
-             if trimmed = "" || String.starts_with ~prefix:"#" trimmed then None else Some trimmed)
-    in
-    match Validation.validate_recipients_for_editing recipients_list with
-    | Error e -> Error e
-    | Ok () -> Ok recipients_list
-  in
-  match Util.Editor.edit_with_validation ~initial:initial_content ~validate:validate_recipients () with
-  | Ok new_recipients_list -> rewrite_recipients_file secret_name new_recipients_list
-  | Error _ -> prerr_endline "E: no recipients provided"
-
 let add_recipients_to_secret secret_name recipients_to_add =
   let secret_path = path_of_secret_name secret_name in
   Util.Secret.check_path_exists_or_die secret_name secret_path;

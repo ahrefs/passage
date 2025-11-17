@@ -36,10 +36,6 @@ module With_config (Config : Types.Config) = struct
         run_cmd ~stdout ~silence_stderr raw_cmd)
       raw_cmd_fmt
 
-  let editor filename =
-    let editor = Option.value (Sys.getenv_opt "EDITOR") ~default:"editor" in
-    run_cmd_stdout "%s %s" (quote editor) (quote filename)
-
   let xclip_read_clipboard x_selection =
     run_cmd_string ~silence_stderr:true "xclip -o -selection %s" (quote x_selection)
 

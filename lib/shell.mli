@@ -1,5 +1,3 @@
-val editor : string -> unit
-
 val xclip_read_clipboard : string -> string
 
 val xclip_copy_to_clipboard : string -> x_selection:string -> unit

@@ -1,11 +1,9 @@
-open Passage.Make (Passage.Default_config)
 open Printf
 open Cmdliner
-open Validation
+open Comment_input
+open Passage.Make (Passage.Default_config)
 open Prompt
 open Recipients
-open Retry
-open Comment_input
 open Util.Secret
 open Util.Show
 
@@ -71,7 +69,7 @@ If the secret is a staging secret, its only recipient should be @everyone.
           match allow_retry with
           | true ->
             show_recipients_notice_if_true is_first_secret_in_new_folder;
-            encrypt_with_retry ~plaintext:updated_secret ~secret_name secret_recipients
+            Retry.encrypt_with_retry ~plaintext:updated_secret ~secret_name secret_recipients
           | false ->
           try
             show_recipients_notice_if_true is_first_secret_in_new_folder;
@@ -192,7 +190,7 @@ module Create = struct
                   "E: secret text already contains comments. Either use the secret text with comments or use the \
                    --comment flag."
             in
-            (match validate_comments comment with
+            (match Validation.validate_comments comment with
             | Error e -> Shell.die "E: invalid comment format: %s" e
             | Ok c -> Ok (reconstruct_secret ~comments:(Some c) parsed_secret)))
     in
@@ -223,7 +221,7 @@ module Edit_cmd = struct
             let initial_content =
               Option.map (fun i -> i ^ Secret.format_explainer) initial |> Option.value ~default:Secret.format_explainer
             in
-            Util.Editor.edit_with_validation ~initial:initial_content ~validate:validate_secret ()))
+            Editor.edit_with_validation ~initial:initial_content ~validate:Validation.validate_secret ()))
 
   let edit =
     let doc = "edit the contents of the specified secret" in
@@ -264,7 +262,7 @@ module Edit_comments = struct
         | _ ->
           let updated_secret = reconstruct_secret ~comments:(Some new_comments) parsed_secret in
           let secret_recipients = Util.Recipients.get_recipients_or_die secret_name in
-          (try encrypt_with_retry ~plaintext:updated_secret ~secret_name secret_recipients
+          (try Retry.encrypt_with_retry ~plaintext:updated_secret ~secret_name secret_recipients
            with exn -> Shell.die ~exn "E: encrypting %s failed" (show_name secret_name)))
 
   let edit_comments_cmd =
@@ -566,7 +564,7 @@ module New = struct
     let () =
       Edit.edit_secret ~verbose ~self_fallback:true secret_name ~allow_retry:true ~get_updated_secret:(fun initial ->
           let initial_content = Option.value ~default:Secret.format_explainer initial in
-          Util.Editor.edit_with_validation ~initial:initial_content ~validate:validate_secret ())
+          Editor.edit_with_validation ~initial:initial_content ~validate:Validation.validate_secret ())
     in
     let original_recipients = Storage.Secrets.(get_recipients_from_path_exn @@ to_path secret_name) in
     Edit.show_recipients_notice_if_true (original_recipients = []);
