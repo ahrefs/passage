@@ -1,3 +1,5 @@
+open Printf
+
 module With_config (Config : Types.Config) = struct
   module Path = Path.With_config (Config)
   module Storage = Storage.With_config (Config)
@@ -15,6 +17,17 @@ module With_config (Config : Types.Config) = struct
 
   open Show
 
+  let die ?exn fmt =
+    ksprintf
+      (fun fmt ->
+        let r =
+          match exn with
+          | None -> sprintf "%s" fmt
+          | Some exn -> sprintf "%s : %s" fmt (Devkit.Exn.to_string exn)
+        in
+        failwith r)
+      fmt
+
   (** Recipients helper utilities for common patterns *)
   module Recipients = struct
     (** Get recipients from secret name and handle "no recipients found" error *)
@@ -22,7 +35,7 @@ module With_config (Config : Types.Config) = struct
       let recipients = Storage.Secrets.(get_recipients_from_path_exn @@ to_path secret_name) in
       match recipients with
       | [] ->
-        Shell.die
+        die
           {|E: No recipients found (use "passage {create,new} folder/new_secret_name" to use recipients associated with $PASSAGE_IDENTITY instead)|}
           (show_name secret_name)
       | _ -> recipients
@@ -44,31 +57,31 @@ module With_config (Config : Types.Config) = struct
     (** Check if a secret exists, die with standard error if not *)
     let check_exists secret_name =
       match Storage.Secrets.secret_exists secret_name with
-      | false -> Shell.die "E: no such secret: %s" (show_name secret_name)
+      | false -> die "E: no such secret: %s" (show_name secret_name)
       | true -> ()
 
     (** Check if a secret exists, die with hint about create/new if not *)
     let check_exists_or_die secret_name =
       match Storage.Secrets.secret_exists secret_name with
-      | false -> Shell.die "E: no such secret: %s.  Use \"new\" or \"create\" for new secrets." (show_name secret_name)
+      | false -> die "E: no such secret: %s.  Use \"new\" or \"create\" for new secrets." (show_name secret_name)
       | true -> ()
 
     (** Check if a secret exists at path, die with standard error if not *)
     let check_path_exists_or_die secret_name path =
       match Storage.Secrets.secret_exists_at path with
-      | false -> Shell.die "E: no such secret: %s" (show_name secret_name)
+      | false -> die "E: no such secret: %s" (show_name secret_name)
       | true -> ()
 
     (** Decrypt secret with silent stderr - common pattern *)
     let decrypt_silently secret_name = Storage.Secrets.decrypt_exn ~silence_stderr:true secret_name
 
     (** Common recipient error messages *)
-    let die_no_recipients_found path = Shell.die "E: no recipients found for %s" (show_path path)
+    let die_no_recipients_found path = die "E: no recipients found for %s" (show_path path)
 
     let die_failed_get_recipients ?exn msg =
       match exn with
-      | Some e -> Shell.die ~exn:e "E: failed to get recipients"
-      | None -> Shell.die "E: failed to get recipients: %s" msg
+      | Some e -> die ~exn:e "E: failed to get recipients"
+      | None -> die "E: failed to get recipients: %s" msg
 
     (** Create a secret with new text but keeping existing secret's comments *)
     let reconstruct_with_new_text ~is_singleline ~new_text ~existing_comments =

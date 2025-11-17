@@ -6,7 +6,7 @@ let add_recipients_if_none_exists recipients secret_path =
   | false -> ()
   | true ->
     (* also adds root group by default for all new secrets *)
-    let root_recipients_names = Storage.Secrets.recipients_of_group_name ~map_fn:Fun.id "@root" in
+    let root_recipients_names = Storage.Secrets.recipients_of_group_name_exn ~map_fn:Fun.id "@root" in
     let () = Devkit.eprintfn "\nI: using recipient group @root for secret %s" (show_path secret_path) in
     (* avoid repeating names if the user creating the secret is already in the root group *)
     let recipients_names =
@@ -51,7 +51,7 @@ let add_recipients_to_secret secret_name recipients_to_add =
   Invariant.run_if_recipient ~op_string:"add recipients" ~path:secret_path ~f:(fun () ->
       let () =
         match Validation.validate_recipients_for_commands recipients_to_add with
-        | Error msg -> Shell.die "%s" msg
+        | Error msg -> Util.die "%s" msg
         | Ok () -> ()
       in
       let current_recipients = Storage.Secrets.get_recipients_names secret_path in
@@ -71,11 +71,11 @@ let remove_recipients_from_secret secret_name recipients_to_remove =
       let new_recipients = List.filter (fun r -> not (List.mem r recipients_to_remove)) current_recipients in
       (* Check for non-existent recipients to warn about *)
       let non_existent = List.filter (fun r -> not (List.mem r current_recipients)) recipients_to_remove in
-      if new_recipients = [] then Shell.die "E: cannot remove all recipients - at least one recipient must remain"
+      if new_recipients = [] then Util.die "E: cannot remove all recipients - at least one recipient must remain"
       else if current_recipients = new_recipients then (
         match non_existent with
         | [] -> prerr_endline "I: no changes made - specified recipients were already absent"
-        | _ -> Shell.die "E: recipients not found: %s" (String.concat ", " non_existent))
+        | _ -> Util.die "E: recipients not found: %s" (String.concat ", " non_existent))
       else (
         (* Show warnings for non-existent recipients before proceeding *)
         let () =
@@ -88,7 +88,7 @@ let remove_recipients_from_secret secret_name recipients_to_remove =
         Devkit.eprintfn "I: removed %d recipient%s" removed_count (if removed_count = 1 then "" else "s")))
 
 let list_recipient_secrets ?(verbose = false) recipients_names =
-  if recipients_names = [] then Shell.die "E: Must specify at least one recipient name";
+  if recipients_names = [] then Util.die "E: Must specify at least one recipient name";
   let number_of_recipients = List.length recipients_names in
   let all_recipient_names = Storage.Keys.all_recipient_names () in
   List.iter
@@ -131,11 +131,11 @@ let list_recipients path expand_groups =
   in
   match Age.is_group_recipient string_path with
   | true ->
-    Storage.Secrets.recipients_of_group_name ~map_fn:Storage.Secrets.recipient_of_name string_path
+    Storage.Secrets.recipients_of_group_name_exn ~map_fn:Storage.Secrets.recipient_of_name string_path
     |> print_from_recipient_list
   | false ->
   match Storage.Secrets.secret_exists_at path || Storage.Secrets.get_secrets_tree path <> [] with
-  | false -> Shell.die "E: no such secret %s" (show_path path)
+  | false -> Util.die "E: no such secret %s" (show_path path)
   | true ->
   match expand_groups with
   | true ->
@@ -156,7 +156,7 @@ let list_recipients path expand_groups =
           try
             (* we don't need the group recipients, just to know that there are some *)
             let (_ : Age.recipient list) =
-              Storage.Secrets.recipients_of_group_name ~map_fn:Storage.Secrets.recipient_of_name recipient_name
+              Storage.Secrets.recipients_of_group_name_exn ~map_fn:Storage.Secrets.recipient_of_name recipient_name
             in
             [ Age.Key.inject "" ]
           with exn ->

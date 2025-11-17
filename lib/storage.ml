@@ -105,7 +105,7 @@ module With_config (Config : Types.Config) = struct
 
     let recipient_of_name name = { Age.name; keys = Keys.keys_of_recipient name }
 
-    let recipients_of_group_name ~map_fn group_name' =
+    let recipients_of_group_name_exn ~map_fn group_name' =
       let recipients_names =
         match group_name' with
         | "@everyone" -> Keys.all_recipient_names ()
@@ -115,7 +115,7 @@ module With_config (Config : Types.Config) = struct
           let existing_groups = all_groups_names () in
           (match List.mem group_name existing_groups with
           (* We don't want to allow referencing non existent groups *)
-          | false -> Shell.die "E: group %S doesn't exist" group_name'
+          | false -> failwith (sprintf "E: group %S doesn't exist" group_name')
           | true ->
             let group_file = FilePath.concat !!Config.keys_dir (FilePath.add_extension group_name groups_ext) in
             Action.config_lines group_file)
@@ -144,7 +144,7 @@ module With_config (Config : Types.Config) = struct
             (fun is_recipient group ->
               match
                 ( is_recipient,
-                  List.mem recipient_name (recipients_of_group_name ~map_fn:(fun x -> x) group),
+                  (try List.mem recipient_name (recipients_of_group_name_exn ~map_fn:Fun.id group) with _ -> false),
                   group = "@everyone" )
               with
               | true, _, _ | false, false, false -> is_recipient
@@ -175,7 +175,8 @@ module With_config (Config : Types.Config) = struct
       let recipients' = get_recipients_names path in
       let groups_names, recipients_names = List.partition Age.is_group_recipient recipients' in
       let groups_recipients =
-        List.map (recipients_of_group_name ~map_fn:recipient_of_name) groups_names |> List.flatten
+        List.map (fun g -> try recipients_of_group_name_exn ~map_fn:recipient_of_name g with _ -> []) groups_names
+        |> List.flatten
       in
       let recipients = List.map recipient_of_name recipients_names in
       recipients @ groups_recipients
@@ -194,8 +195,10 @@ module With_config (Config : Types.Config) = struct
       let group_recipients =
         List.map
           (fun group ->
-            let recipients = recipients_of_group_name ~map_fn:recipient_of_name group in
-            List.map (fun (r : Age.recipient) -> r.name) recipients)
+            try
+              let recipients = recipients_of_group_name_exn ~map_fn:recipient_of_name group in
+              List.map (fun (r : Age.recipient) -> r.name) recipients
+            with _ -> [])
           groups
         |> List.flatten
       in
