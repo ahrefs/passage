@@ -51,6 +51,8 @@ module With_config (Config : Types.Config) = struct
 
     let keys_ext = ".keys"
 
+    let verbose_eprintlf ?(verbose = false) fmt = if verbose then Devkit.eprintfn fmt else ksprintf (Fun.const ()) fmt
+
     let to_path secret = secret |> Secret_name.norm_secret |> Secret_name.project |> Path.inject
 
     let agefile_of_name name = Path.inject (FilePath.add_extension (Secret_name.project name) ext)
@@ -231,7 +233,10 @@ module With_config (Config : Types.Config) = struct
       close_out tmpfile_oc;
       FileUtil.mv tmpfile (Path.project secret_file)
 
-    let encrypt_exn ~plaintext ~secret_name recipients = encrypt_using_tmpfile ~secret_name ~plaintext ~recipients
+    let encrypt_exn ?(verbose = false) ~plaintext ~secret_name recipients =
+      verbose_eprintlf ~verbose "I: encrypting %s for %s" (Secret_name.project secret_name)
+        (List.map (fun r -> Age.(r.name)) recipients |> String.concat ", ");
+      encrypt_using_tmpfile ~secret_name ~plaintext ~recipients
 
     let decrypt_exn ?(silence_stderr = false) secret_name =
       let secret_file = Path.(project @@ abs @@ agefile_of_name secret_name) in
@@ -251,14 +256,6 @@ module With_config (Config : Types.Config) = struct
       with exn -> Failed exn
 
     let refresh ~verbose ?force secrets =
-      let verbose_print fmt =
-        ksprintf
-          (fun msg ->
-            match verbose with
-            | true -> Printf.eprintf "%s\n" msg
-            | false -> ())
-          fmt
-      in
       let self_key = Age.Key.from_identity_file !!Config.identity_file in
       let skipped, refreshed, failed =
         List.fold_left
@@ -266,13 +263,15 @@ module With_config (Config : Types.Config) = struct
             let raw_secret_name = Secret_name.project secret in
             match refresh' ?force secret self_key with
             | Succeeded () ->
-              let () = verbose_print "I: refreshed %s" raw_secret_name in
+              let () = verbose_eprintlf ~verbose "I: refreshed %s" raw_secret_name in
               skipped, refreshed + 1, failed
             | Skipped ->
-              let () = verbose_print "I: skipped %s" raw_secret_name in
+              let () = verbose_eprintlf ~verbose "I: skipped %s" raw_secret_name in
               skipped + 1, refreshed, failed
             | Failed exn ->
-              let () = verbose_print "W: failed to refresh %s : %s" raw_secret_name (Devkit.Exn.to_string exn) in
+              let () =
+                verbose_eprintlf ~verbose "W: failed to refresh %s : %s" raw_secret_name (Devkit.Exn.to_string exn)
+              in
               skipped, refreshed, failed + 1)
           (0, 0, 0) secrets
       in

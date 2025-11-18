@@ -192,5 +192,5 @@ let edit_recipients secret_name =
     | Ok () -> Ok recipients_list
   in
   match Editor.edit_with_validation ~initial:initial_content ~validate:validate_recipients () with
-  | Ok new_recipients_list -> Recipients.rewrite_recipients_file secret_name new_recipients_list
+  | Ok new_recipients_list -> Commands.Recipients.rewrite_recipients_file secret_name new_recipients_list
   | Error _ -> prerr_endline "E: no recipients provided"

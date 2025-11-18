@@ -23,10 +23,12 @@ module With_config (Config : Types.Config) = struct
         let r =
           match exn with
           | None -> sprintf "%s" fmt
-          | Some exn -> sprintf "%s : %s" fmt (Devkit.Exn.to_string exn)
+          | Some exn -> sprintf "%s: %s" fmt (Devkit.Exn.to_string exn)
         in
         failwith r)
       fmt
+
+  let verbose_eprintlf ?(verbose = false) fmt = if verbose then Devkit.eprintfn fmt else ksprintf (Fun.const ()) fmt
 
   (** Recipients helper utilities for common patterns *)
   module Recipients = struct

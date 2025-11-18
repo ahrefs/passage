@@ -13,6 +13,6 @@ Extract multiple secret names from a string
 
 Non-existent template file
   $ passage template-secrets no_such_file
-  Failed to parse the file : Sys_error("no_such_file: No such file or directory")
+  Failed to parse the file: Sys_error("no_such_file: No such file or directory")
   [1]
 

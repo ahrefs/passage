@@ -62,7 +62,10 @@ module With_config (Config : Types.Config) = struct
     | v :: rest -> if v then p_aux [ el ] rest else p_aux [ mid ] rest
     | [] -> ""
 
-  let p d = printf "%s%s\n" (to_pref_str d)
+  let p buf d s =
+    Buffer.add_string buf (to_pref_str d);
+    Buffer.add_string buf s;
+    Buffer.add_char buf '\n'
 
   (* call a different function for the last item *)
   let rec iter_but_one f lastf l =
@@ -79,23 +82,25 @@ module With_config (Config : Types.Config) = struct
 
   let color c s = sprintf "\027[01;%sm%s\027[00m" c s
 
-  let rec pp_node d n =
+  let rec pp_node buf d n =
     match n with
     | nm, F r ->
       (match r with
-      | Succeeded _ -> p d (color green nm)
-      | Failed _ -> p d (color red nm)
-      | _ -> p d nm)
+      | Succeeded _ -> p buf d (color green nm)
+      | Failed _ -> p buf d (color red nm)
+      | _ -> p buf d nm)
     | nm, D nl ->
-      let () = p d (color blue nm) in
-      iter_but_one (pp_node (false :: d)) (pp_node (true :: d)) nl
+      let () = p buf d (color blue nm) in
+      iter_but_one (pp_node buf (false :: d)) (pp_node buf (true :: d)) nl
 
   let pp t =
+    let buf = Buffer.create 256 in
     match t with
     | Top (_, D l) ->
-      let () = printf ".\n" in
-      iter_but_one (pp_node [ false ]) (pp_node [ true ]) l
-    | Top (_, F _) -> ()
+      Buffer.add_string buf ".\n";
+      iter_but_one (pp_node buf [ false ]) (pp_node buf [ true ]) l;
+      Buffer.contents buf
+    | Top (_, F _) -> ""
 end
 
 include With_config (Default_config)

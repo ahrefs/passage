@@ -1,9 +1,8 @@
 open Printf
 open Cmdliner
 open Comment_input
-open Passage.Make (Passage.Default_config)
+open Passage
 open Prompt
-open Recipients
 open Util.Secret
 open Util.Show
 
@@ -15,13 +14,6 @@ type output_mode =
   | Stdout
 
 let verbose_eprintlf ?(verbose = false) fmt = if verbose then Devkit.eprintfn fmt else ksprintf (Fun.const ()) fmt
-
-module Encrypt = struct
-  let encrypt_exn ?(verbose = false) ~plaintext ~secret_name recipients =
-    verbose_eprintlf ~verbose "I: encrypting %s for %s" (show_name secret_name)
-      (List.map (fun r -> Age.(r.name)) recipients |> String.concat ", ");
-    Storage.Secrets.encrypt_exn ~plaintext ~secret_name recipients
-end
 
 module Edit = struct
   let new_secret_recipients_notice =
@@ -59,7 +51,7 @@ If the secret is a staging secret, its only recipient should be @everyone.
         let secret_recipients =
           if secret_recipients' = [] && self_fallback then (
             let own_recipients = Storage.Secrets.recipients_of_own_id () in
-            let () = add_recipients_if_none_exists own_recipients secret_path in
+            let () = Commands.Recipients.add_recipients_if_none_exists own_recipients secret_path in
             Storage.Secrets.get_recipients_from_path_exn secret_path)
           else secret_recipients'
         in
@@ -73,7 +65,7 @@ If the secret is a staging secret, its only recipient should be @everyone.
           | false ->
           try
             show_recipients_notice_if_true is_first_secret_in_new_folder;
-            Encrypt.encrypt_exn ~verbose ~plaintext:updated_secret ~secret_name secret_recipients
+            Storage.Secrets.encrypt_exn ~verbose ~plaintext:updated_secret ~secret_name secret_recipients
           with exn -> Exn.fail ~exn "E: encrypting %s failed" raw_secret_name)
     with Failure s -> Shell.die "%s" s
 end
@@ -159,7 +151,8 @@ module Add_who = struct
     let term =
       Term.(
         const (fun secret_name recipients_to_add ->
-            try add_recipients_to_secret secret_name recipients_to_add with Failure s -> Shell.die "%s" s)
+            try Commands.Recipients.add_recipients_to_secret secret_name recipients_to_add
+            with Failure s -> Shell.die "%s" s)
         $ Flags.secret_name
         $ recipient_names)
     in
@@ -177,7 +170,8 @@ module Rm_who = struct
     let term =
       Term.(
         const (fun secret_name recipients_to_remove ->
-            try remove_recipients_from_secret secret_name recipients_to_remove with Failure s -> Shell.die "%s" s)
+            try Commands.Recipients.remove_recipients_from_secret secret_name recipients_to_remove
+            with Failure s -> Shell.die "%s" s)
         $ Flags.secret_name
         $ recipient_names)
     in
@@ -349,7 +343,10 @@ module Get = struct
   end
 
   let get_secret ?expected_kind ?line_number ~with_comments ?(trim_new_line = false) secret_name output_mode =
-    let secret = Commands.Get.get_secret ?expected_kind ?line_number ~with_comments ~trim_new_line secret_name in
+    let secret =
+      try Commands.Get.get_secret ?expected_kind ?line_number ~with_comments ~trim_new_line secret_name
+      with Failure s -> Shell.die "%s" s
+    in
     match output_mode with
     | QrCode -> Output.print_as_qrcode ~secret_name ~secret
     | Clipboard -> Output.save_to_clipboard ~secret_name ~secret
@@ -470,7 +467,7 @@ Checking for validity of own secrets. Use -v flag to break down per secret
                            let parsed_secret = Secret.Validation.parse_exn secret_text in
                            let upgraded_secret = reconstruct_secret ~comments:parsed_secret.comments parsed_secret in
                            let recipients = Util.Recipients.get_recipients_or_die secret_name in
-                           Encrypt.encrypt_exn ~verbose:false ~plaintext:upgraded_secret ~secret_name recipients;
+                           Storage.Secrets.encrypt_exn ~verbose:false ~plaintext:upgraded_secret ~secret_name recipients;
                            Devkit.eprintfn "I: updated %s" (show_name secret_name);
                            1
                          with exn ->
@@ -507,64 +504,15 @@ Checking for validity of own secrets. Use -v flag to break down per secret
 end
 
 module Init = struct
-  let init () =
-    try
-      (* create private and pub key, ask for user's name *)
-      let () =
-        print_endline
-          {|
-Welcome to passage initial setup.
-
-Passage will now create the default dirs for secrets and recipients keys.
-A recipient identity will also be added, as well as an empty group file for root users.
-
-The layout will be:
-~/.config/passage
-├── identity.key
-├── keys
-│   └── root.group
-│   └── <user_name>.pub
-└── secrets
-
-The location of these can be overriden using environment variables. Please check `passage --help` for details.
-
-What should be the name used for your recipient identity?|}
-      in
-      let user_name =
-        String.trim @@ In_channel.input_all stdin
-        |> ExtString.String.replace_chars (fun c ->
-               match c with
-               | ' ' -> "_"
-               | '\n' -> ""
-               | c -> Char.escaped c)
-      in
-      let () = Shell.age_generate_identity_key_root_group_exn user_name in
-      Printf.eprintf "\nPassage setup completed.\n"
-    with exn ->
-      (* Error out and delete everything, so we can start fresh next time *)
-      FileUtil.rm ~recurse:true [ Lazy.force Config.base_dir ];
-      Printf.eprintf "E: Passage init failed. Please try again. Error:\n\n%s\n" (Printexc.to_string exn)
-
   let init =
     let doc = "initial setup of passage" in
     let info = Cmd.info "init" ~doc in
-    let term = Term.(const init $ const ()) in
+    let term = Term.(const (fun () -> try Commands.Init.init () with Failure s -> Shell.die "%s" s) $ const ()) in
     Cmd.v info term
 end
 
 module List_ = struct
-  let list_secrets path =
-    let raw_path = show_path path in
-    let secret_exists = try Storage.Secrets.secret_exists_at path with _exn -> false in
-    match secret_exists with
-    | true -> print_endline Storage.Secrets.(name_of_file (Path.abs path) |> show_name)
-    | false ->
-      let is_dir = try Path.is_directory (Path.abs path) with exn -> Shell.die ~exn "E: %s" raw_path in
-      (match is_dir with
-      | true ->
-        Storage.(Secrets.get_secrets_tree path |> List.sort Secret_name.compare)
-        |> List.iter (fun s -> print_endline @@ show_name s)
-      | false -> Shell.die "No secrets at %s" raw_path)
+  let list_secrets path = try Commands.List_.list_secrets path with Failure s -> Shell.die "%s" s
 
   let list =
     let doc = "recursively list all secrets" in
@@ -608,50 +556,35 @@ module New = struct
 end
 
 module Realpath = struct
-  let realpath paths =
-    paths
-    |> List.iter (fun path ->
-           let abs_path = Path.abs path in
-           if Storage.Secrets.secret_exists_at path then (
-             let secret_name = secret_name_of_path path in
-             print_endline (show_path (Path.abs (Storage.Secrets.agefile_of_name secret_name))))
-           else if Path.is_directory abs_path then (
-             let str = show_path abs_path in
-             if Path.is_dot (Path.build_rel_path (show_path path)) then
-               print_endline (Lazy.force Storage.Secrets.base_dir ^ "/")
-             else print_endline (str ^ if String.ends_with ~suffix:"/" str then "" else "/"))
-           else Printf.eprintf "W: real path of secret/folder %S not found\n" (show_path path))
-
   let realpath =
     let doc =
       "show the full filesystem path to secrets/folders.  Note it will only list existing files or directories."
     in
     let info = Cmd.info "realpath" ~doc in
-    let term = Term.(const realpath $ Flags.secrets_paths) in
+    let term =
+      Term.(
+        const (fun paths ->
+            Commands.Realpath.realpath paths
+            |> List.iter (fun r ->
+                   match r with
+                   | Ok path -> print_endline path
+                   | Error e -> Printf.eprintf "W: %s\n" e))
+        $ Flags.secrets_paths)
+    in
     Cmd.v info term
 end
 
 module Refresh = struct
-  let refresh_secrets ?(verbose = false) paths =
-    let secrets =
-      List.fold_left
-        (fun acc path ->
-          (match Storage.Secrets.get_secrets_tree path with
-          | _ :: _ as secrets -> secrets
-          | [] ->
-          match Storage.Secrets.secret_exists_at path with
-          | true -> [ secret_name_of_path path ]
-          | false -> Shell.die "E: no secrets at %s" (show_path path))
-          @ acc)
-        [] paths
-    in
-    let secrets = List.sort_uniq Storage.Secret_name.compare secrets in
-    Storage.Secrets.refresh ~verbose secrets
-
   let refresh =
     let doc = "re-encrypt secrets in the specified path(s)" in
     let info = Cmd.info "refresh" ~doc in
-    let term = Term.(const (fun verbose -> refresh_secrets ~verbose) $ Flags.verbose $ Flags.secrets_paths) in
+    let term =
+      Term.(
+        const (fun verbose paths ->
+            try Commands.Refresh.refresh_secrets ~verbose paths with Failure s -> Shell.die "%s" s)
+        $ Flags.verbose
+        $ Flags.secrets_paths)
+    in
     Cmd.v info term
 end
 
@@ -697,7 +630,7 @@ module Replace = struct
               reconstruct_with_new_text ~is_singleline:is_singleline_secret ~new_text:new_secret_plaintext
                 ~existing_comments:original_secret.comments
           in
-          try Encrypt.encrypt_exn ~verbose:false ~plaintext:updated_secret ~secret_name recipients
+          try Storage.Secrets.encrypt_exn ~verbose:false ~plaintext:updated_secret ~secret_name recipients
           with exn -> Shell.die ~exn "E: encrypting %s failed" (show_name secret_name))
     with Failure s -> Shell.die "%s" s
 
@@ -735,7 +668,7 @@ module Replace_comments = struct
                 ~help_message:"Please type the new comments and then do Ctrl+d twice to terminate input" ()
             in
             let updated_secret = reconstruct_secret ~comments:(Some new_comments) original_secret in
-            (try Encrypt.encrypt_exn ~verbose:false ~plaintext:updated_secret ~secret_name recipients
+            (try Storage.Secrets.encrypt_exn ~verbose:false ~plaintext:updated_secret ~secret_name recipients
              with exn -> Shell.die ~exn "E: encrypting %s failed" secret_name_str))
     with Failure s -> Shell.die "%s" s
 
@@ -748,64 +681,35 @@ end
 
 module Rm = struct
   let force =
-    let doc = "Delete secrets and folders without asking for confirmation" in
+    let doc = "Delete secrets and folders" in
     Arg.(value & flag & info [ "f"; "force" ] ~doc)
 
-  let rm_secrets ?(verbose = false) paths force =
-    List.iter
-      (fun path ->
-        let is_directory = Path.is_directory (Path.abs path) in
-        (match Storage.Secrets.secret_exists_at path, is_directory with
-        | false, false -> Shell.die "E: no secrets exist at %s" (show_path path)
-        | _ -> ());
-        let string_path = show_path path in
-        let rm_result =
-          if force then Storage.Secrets.rm ~is_directory path
-          else (
-            match yesno_tty_check (sprintf "Are you sure you want to delete %s?" string_path) with
-            | NoTTY | TTY true -> Storage.Secrets.rm ~is_directory path
-            | TTY false -> Storage.Secrets.Skipped)
-        in
-        match rm_result with
-        | Storage.Secrets.Succeeded () -> verbose_eprintlf ~verbose "I: removed %s" string_path
-        | Skipped -> Devkit.eprintfn "I: skipped deleting %s" string_path
-        | Failed exn -> Shell.die "E: failed to delete %s : %s" string_path (Exn.to_string exn))
-      paths
+  let rm_secrets verbose paths force =
+    let rm_result ~path ~force =
+      let is_directory = Path.is_directory (Path.abs path) in
+      let string_path = show_path path in
+      if force then Commands.Storage.Secrets.rm ~is_directory path
+      else (
+        match yesno_tty_check (sprintf "Are you sure you want to delete %s?" string_path) with
+        | NoTTY | TTY true -> Commands.Storage.Secrets.rm ~is_directory path
+        | TTY false -> Commands.Storage.Secrets.Skipped)
+    in
+    try Commands.Rm.rm_secrets ~verbose ~paths ~force ~f:rm_result with Failure s -> Shell.die "%s" s
 
   let rm =
     let doc = "remove a secret or a folder and its secrets" in
     let info = Cmd.info "rm" ~doc in
-    let term = Term.(const (fun verbose -> rm_secrets ~verbose) $ Flags.verbose $ Flags.secrets_paths $ force) in
+    let term = Term.(const rm_secrets $ Flags.verbose $ Flags.secrets_paths $ force) in
     Cmd.v info term
 
   let delete =
     let doc = "same as the $(i,rm) cmd. Remove a secret or a folder and its secrets" in
     let info = Cmd.info "delete" ~doc in
-    let term = Term.(const (fun verbose -> rm_secrets ~verbose) $ Flags.verbose $ Flags.secrets_paths $ force) in
+    let term = Term.(const rm_secrets $ Flags.verbose $ Flags.secrets_paths $ force) in
     Cmd.v info term
 end
 
 module Search = struct
-  let search_secrets ?(verbose = false) pattern path =
-    let secrets = Storage.Secrets.get_secrets_tree path |> List.sort Storage.Secret_name.compare in
-    let n_skipped, n_failed, n_matched, matched_secrets =
-      List.fold_left
-        (fun (n_skipped, n_failed, n_matched, matched_secrets) secret ->
-          match Storage.Secrets.search secret pattern with
-          | Succeeded true -> n_skipped, n_failed, n_matched + 1, secret :: matched_secrets
-          | Succeeded false -> n_skipped, n_failed, n_matched, matched_secrets
-          | Skipped ->
-            verbose_eprintlf ~verbose "I: skipped %s" (show_name secret);
-            n_skipped + 1, n_failed, n_matched, matched_secrets
-          | Failed exn ->
-            Devkit.eprintfn "W: failed to search %s : %s" (show_name secret) (Exn.to_string exn);
-            n_skipped, n_failed + 1, n_matched, matched_secrets)
-        (0, 0, 0, []) secrets
-    in
-    List.rev matched_secrets |> List.iter (fun s -> print_endline (show_name s));
-    Printf.eprintf "I: skipped %d secrets, failed to search %d secrets and matched %d secrets\n" n_skipped n_failed
-      n_matched
-
   let search =
     let pattern =
       let doc = "the pattern to match against" in
@@ -815,38 +719,32 @@ module Search = struct
       let doc = "the relative $(docv) from the secrets directory that will be searched" in
       Arg.(value & pos 1 Converters.path_arg (Path.inject ".") & info [] ~docv:"PATH" ~doc)
     in
-    let term = Term.(const (fun verbose -> search_secrets ~verbose) $ Flags.verbose $ pattern $ secrets_path) in
+    let term =
+      Term.(
+        const (fun verbose pattern secrets_path ->
+            try Commands.Search.search_secrets ~verbose pattern secrets_path with Failure s -> Shell.die "%s" s)
+        $ Flags.verbose
+        $ pattern
+        $ secrets_path)
+    in
     let doc = "list secrets in the specified path, containing contents that match the specified pattern" in
     let info = Cmd.info "search" ~doc in
     Cmd.v info term
 end
 
 module Show = struct
-  type show_mode =
-    | ShowSecret
-    | ShowTree
-
-  let list_secrets_tree path =
-    let full_path = Path.abs path in
-    let path, show_mode =
-      match Path.is_directory full_path, Storage.Secrets.secret_exists_at path with
-      | false, true -> path, ShowSecret
-      | false, false -> Shell.die "No secrets at this path : %s" (show_path full_path)
-      | true, _ -> path, ShowTree
-    in
-    match show_mode with
-    | ShowSecret -> Get.cat (secret_name_of_path path) Stdout None
-    | ShowTree ->
-      let tree = Dirtree.of_path (Path.to_fpath (Path.abs path)) in
-      Dirtree.pp tree
-
   let show =
     let doc =
       "recursively list all secrets in a tree-like format. If used on a single secret, it will work the same as the \
        cat command."
     in
     let info = Cmd.info "show" ~doc in
-    let term = Term.(const list_secrets_tree $ Flags.secrets_path) in
+    let term =
+      Term.(
+        const (fun path ->
+            try Printf.printf "%s" @@ Commands.Show.list_secrets_tree path with Failure s -> Shell.die "%s" s)
+        $ Flags.secrets_path)
+    in
     Cmd.v info term
 end
 
@@ -855,7 +753,11 @@ module Subst = struct
     let doc = "a template on the commandline" in
     Arg.(required & pos 0 (some Converters.template_arg) None & info [] ~doc ~docv:"TEMPLATE_ARG")
 
-  let substitute template = try Template.substitute ~template () with exn -> Shell.die ~exn "E: failed to substitute"
+  let substitute template =
+    try
+      let contents = Commands.Template.substitute ~template in
+      print_string contents
+    with exn -> Shell.die ~exn "E: failed to substitute"
 
   let subst =
     let doc = "fill in values in the provided template" in
@@ -866,7 +768,13 @@ end
 
 module Template_cmd = struct
   let substitute_template template_file target_file =
-    try Template.substitute_file ~template_file ~target_file with exn -> Shell.die ~exn "E: failed to substitute file"
+    try
+      let contents = Commands.Template.substitute_file ~template_file in
+      match target_file with
+      | None -> print_string contents
+      | Some target_file ->
+        Devkit.Files.save_as (Path.project target_file) ~mode:0o600 (fun oc -> Out_channel.output_string oc contents)
+    with exn -> Shell.die ~exn "E: failed to substitute file"
 
   let target_file =
     let doc = "the target file for templating if present, otherwise output to standard output" in
@@ -880,23 +788,18 @@ module Template_cmd = struct
 end
 
 module Template_secrets = struct
-  let list_template_secrets template_file =
-    let tree = try Template.parse_file template_file with exn -> Shell.die ~exn "Failed to parse the file" in
-    let idens =
-      List.filter_map
-        (fun node ->
-          match node with
-          | Template_ast.Text _ -> None
-          | Template_ast.Iden secret_name -> Some secret_name)
-        tree
-      |> List.sort_uniq String.compare
-    in
-    List.iter print_endline idens
-
   let template_secrets =
     let doc = "sorted unique list of secret references found in a template. Secrets are not checked for existence" in
     let info = Cmd.info "template-secrets" ~doc in
-    let term = Term.(const list_template_secrets $ Flags.template_file) in
+    let term =
+      Term.(
+        const (fun template_file ->
+            try
+              let ss = Commands.Template.list_template_secrets template_file in
+              List.iter print_endline ss
+            with Failure s -> Shell.die "%s" s)
+        $ Flags.template_file)
+    in
     Cmd.v info term
 end
 
@@ -911,7 +814,7 @@ module What = struct
     let term =
       Term.(
         const (fun names verbose ->
-            try Recipients.list_recipient_secrets ~verbose names with Failure s -> Shell.die "%s" s)
+            try Commands.Recipients.list_recipient_secrets ~verbose names with Failure s -> Shell.die "%s" s)
         $ recipient_name
         $ Flags.verbose)
     in
@@ -922,7 +825,7 @@ module My = struct
   let list_my_secrets () =
     let recipients_of_own_id = Storage.Secrets.recipients_of_own_id () in
     let recipients_names = List.map (fun r -> r.Age.name) recipients_of_own_id in
-    try Recipients.list_recipient_secrets ~verbose:false recipients_names with Failure s -> Shell.die "%s" s
+    try Commands.Recipients.list_recipient_secrets ~verbose:false recipients_names with Failure s -> Shell.die "%s" s
 
   let my =
     let doc = "list secrets that you have access to (alias for 'what <your.name>')" in
@@ -942,7 +845,7 @@ module Who = struct
     let term =
       Term.(
         const (fun secrets_path expand_groups ->
-            try list_recipients secrets_path expand_groups with Failure s -> Shell.die "%s" s)
+            try Commands.Recipients.list_recipients secrets_path expand_groups with Failure s -> Shell.die "%s" s)
         $ Flags.secrets_path
         $ expand_groups)
     in
