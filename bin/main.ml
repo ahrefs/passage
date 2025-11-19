@@ -294,13 +294,13 @@ module Get = struct
       | Some m -> Qrc_fmt.pp_utf_8_half ~invert:true Format.std_formatter m
 
     let save_to_clipboard_exn ~secret =
-      let read_clipboard () = Shell.xclip_read_clipboard Config.x_selection in
+      let read_clipboard () = Shell.xclip_read_clipboard !Config.x_selection in
       let copy_to_clipboard s =
-        try Shell.xclip_copy_to_clipboard s ~x_selection:Config.x_selection
+        try Shell.xclip_copy_to_clipboard s ~x_selection:!Config.x_selection
         with exn -> Exn.fail ~exn "E: could not copy data to the clipboard"
       in
       let restore_clipboard original_content =
-        let () = Unix.sleep Config.clip_time in
+        let () = Unix.sleep !Config.clip_time in
         let current_content = read_clipboard () in
         (* It might be nice to programatically check to see if klipper exists,
            as well as checking for other common clipboard managers. But for now,
@@ -338,7 +338,7 @@ module Get = struct
         match save_to_clipboard_exn ~secret with
         | `Child -> ()
         | `Forked _ ->
-          Devkit.eprintfn "Copied %s to clipboard. Will clear in %d seconds." (show_name secret_name) Config.clip_time
+          Devkit.eprintfn "Copied %s to clipboard. Will clear in %d seconds." (show_name secret_name) !Config.clip_time
       with exn -> Shell.die ~exn "E: failed to save to clipboard! Check if you have an X server running."
   end
 
@@ -688,11 +688,11 @@ module Rm = struct
     let rm_result ~path ~force =
       let is_directory = Path.is_directory (Path.abs path) in
       let string_path = show_path path in
-      if force then Commands.Storage.Secrets.rm ~is_directory path
+      if force then Storage.Secrets.rm ~is_directory path
       else (
         match yesno_tty_check (sprintf "Are you sure you want to delete %s?" string_path) with
-        | NoTTY | TTY true -> Commands.Storage.Secrets.rm ~is_directory path
-        | TTY false -> Commands.Storage.Secrets.Skipped)
+        | NoTTY | TTY true -> Storage.Secrets.rm ~is_directory path
+        | TTY false -> Storage.Secrets.Skipped)
     in
     try Commands.Rm.rm_secrets ~verbose ~paths ~force ~f:rm_result with Failure s -> Shell.die "%s" s
 

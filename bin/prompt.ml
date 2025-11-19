@@ -1,5 +1,5 @@
 (** User prompt and input utilities *)
-open Passage.Make (Passage.Default_config)
+open Passage
 
 open Util.Show
 

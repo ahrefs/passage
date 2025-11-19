@@ -1,4 +1,4 @@
-open Passage.Make (Passage.Default_config)
+open Passage
 open Validation
 open Prompt
 
