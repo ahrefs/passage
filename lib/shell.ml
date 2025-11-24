@@ -36,9 +36,10 @@ let run_cmd_first_line ?(silence_stderr = false) ?use_sudo raw_cmd_fmt =
       run_cmd ~stdout ~silence_stderr ?use_sudo raw_cmd)
     raw_cmd_fmt
 
-let xclip_read_clipboard x_selection = run_cmd_string ~silence_stderr:true "xclip -o -selection %s" (quote x_selection)
+let xclip_read_clipboard ?(x_selection = "clipboard") () =
+  run_cmd_string ~silence_stderr:true "xclip -o -selection %s" (quote x_selection)
 
-let xclip_copy_to_clipboard s ~x_selection =
+let xclip_copy_to_clipboard ?(x_selection = "clipboard") s =
   run_cmd_stdout {|printf "%%s" %s | xclip -selection %s|} (quote s) (quote x_selection)
 
 let clear_clipboard_managers () =

@@ -288,19 +288,22 @@ end
 
 module Get = struct
   module Output = struct
+    let clip_time = Option.value (Sys.getenv_opt "PASSAGE_CLIP_TIME") ~default:"45" |> int_of_string
+
     let print_as_qrcode ~secret_name ~secret =
       match Qrc.encode secret with
       | None -> Shell.die "Failed to encode %s as QR code. Data capacity exceeded!" (show_name secret_name)
       | Some m -> Qrc_fmt.pp_utf_8_half ~invert:true Format.std_formatter m
 
     let save_to_clipboard_exn ~secret =
-      let read_clipboard () = Shell.xclip_read_clipboard !Config.x_selection in
+      let x_selection = Sys.getenv_opt "PASSAGE_X_SELECTION" in
+      let read_clipboard () = Shell.xclip_read_clipboard ?x_selection () in
       let copy_to_clipboard s =
-        try Shell.xclip_copy_to_clipboard s ~x_selection:!Config.x_selection
+        try Shell.xclip_copy_to_clipboard ?x_selection s
         with exn -> Exn.fail ~exn "E: could not copy data to the clipboard"
       in
       let restore_clipboard original_content =
-        let () = Unix.sleep !Config.clip_time in
+        let () = Unix.sleep clip_time in
         let current_content = read_clipboard () in
         (* It might be nice to programatically check to see if klipper exists,
            as well as checking for other common clipboard managers. But for now,
@@ -338,7 +341,7 @@ module Get = struct
         match save_to_clipboard_exn ~secret with
         | `Child -> ()
         | `Forked _ ->
-          Devkit.eprintfn "Copied %s to clipboard. Will clear in %d seconds." (show_name secret_name) !Config.clip_time
+          Devkit.eprintfn "Copied %s to clipboard. Will clear in %d seconds." (show_name secret_name) clip_time
       with exn -> Shell.die ~exn "E: failed to save to clipboard! Check if you have an X server running."
   end
 

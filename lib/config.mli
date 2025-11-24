@@ -12,9 +12,3 @@ val secrets_dir : string lazy_t ref
 
 (** Path to the identity key file. Default: $PASSAGE_IDENTITY or <base_dir>/identity.key *)
 val identity_file : string lazy_t ref
-
-(** Selection method for x-selection. Default: $PASSAGE_X_SELECTION or "clipboard" *)
-val x_selection : string ref
-
-(** Clipboard timeout. Default: $PASSAGE_CLIP_TIME or "45" *)
-val clip_time : int ref

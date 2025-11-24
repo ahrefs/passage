@@ -1,6 +1,6 @@
-val xclip_read_clipboard : string -> string
+val xclip_read_clipboard : ?x_selection:string -> unit -> string
 
-val xclip_copy_to_clipboard : string -> x_selection:string -> unit
+val xclip_copy_to_clipboard : ?x_selection:string -> string -> unit
 
 val clear_clipboard_managers : unit -> unit
 

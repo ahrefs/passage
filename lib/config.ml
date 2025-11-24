@@ -7,7 +7,7 @@ let base_dir =
             (List.fold_left (fun accum s -> Filename.concat accum s) (Lazy.force !home_dir) [ ".config"; "passage" ]))
 
 (* Paths indicated by config values may not exist, and will result in an exn raised
-   by ExtUnix.All.realpath. Theref @@ore, we lazily evaluate these values so that exns
+   by ExtUnix.All.realpath. Therefore, we lazily evaluate these values so that exns
    are raised only when we do use these paths.
 *)
 let keys_dir =
@@ -41,7 +41,3 @@ let identity_file =
         try ExtUnix.All.realpath path
         with Unix.Unix_error (Unix.ENOENT, "realpath", _) ->
           Printf.ksprintf failwith "no identity file found (%s). Is passage setup? Try 'passage init'." path)
-
-let x_selection = ref @@ Option.value (Sys.getenv_opt "PASSAGE_X_SELECTION") ~default:"clipboard"
-
-let clip_time = ref @@ (Option.value (Sys.getenv_opt "PASSAGE_CLIP_TIME") ~default:"45" |> int_of_string)
