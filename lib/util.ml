@@ -47,7 +47,7 @@ module Secret = struct
     Secret.Validation.parse_exn plaintext
 
   (** Reconstruct a secret from parsed secret and new comments *)
-  let reconstruct_secret ~comments { Secret.kind; text; _ } =
+  let reconstruct_secret ?comments { Secret.kind; text; _ } =
     match kind with
     | Secret.Singleline -> Secret.singleline_from_text_description text (Option.value ~default:"" comments)
     | Secret.Multiline -> Secret.multiline_from_text_description text (Option.value ~default:"" comments)

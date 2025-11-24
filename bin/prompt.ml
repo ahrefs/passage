@@ -10,10 +10,8 @@ type prompt_reply =
 let is_TTY = Unix.isatty Unix.stdin
 
 let yesno prompt =
-  let () = Printf.printf "%s [y/N] " prompt in
-  let () = flush stdout in
-  let ans = read_line () in
-  match ans with
+  let () = Printf.printf "%s [y/N] %!" prompt in
+  match read_line () with
   | "Y" | "y" -> true
   | _ -> false
 
@@ -21,10 +19,9 @@ let yesno_tty_check prompt =
   match is_TTY with
   | false -> NoTTY
   | true ->
-    let () = Printf.printf "%s [y/N] %!" prompt in
-    (match read_line () with
-    | "Y" | "y" -> TTY true
-    | _ -> TTY false)
+  match yesno prompt with
+  | true -> TTY true
+  | false -> TTY false
 
 let input_help_if_user_input ?(msg = "Please type the secret and then do Ctrl+d twice to terminate input") () =
   match is_TTY with

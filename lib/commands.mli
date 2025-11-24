@@ -7,14 +7,14 @@ module Get : sig
     ?use_sudo:bool ->
     ?expected_kind:Secret.kind ->
     ?line_number:int ->
-    with_comments:bool ->
+    ?with_comments:bool ->
     ?trim_new_line:bool ->
     Storage.Secret_name.t ->
     string
 end
 
 module List_ : sig
-  val list_secrets : Path.t -> unit
+  val list_secrets : Path.t -> string list
 end
 
 module Recipients : sig
@@ -41,8 +41,7 @@ module Realpath : sig
 end
 
 module Rm : sig
-  val rm_secrets :
-    verbose:bool -> paths:Path.t list -> force:'a -> f:(path:Path.t -> force:'a -> unit Storage.Secrets.outcome) -> unit
+  val rm_secrets : verbose:bool -> paths:Path.t list -> force:bool -> ?confirm:(path:Path.t -> bool) -> unit -> unit
 end
 
 module Search : sig
@@ -51,4 +50,25 @@ end
 
 module Show : sig
   val list_secrets_tree : Path.t -> string
+end
+
+module Edit : sig
+  val show_recipients_notice_if_true : bool -> unit
+  val edit_secret :
+    ?self_fallback:bool ->
+    ?verbose:bool ->
+    ?allow_retry:(plaintext:string -> secret_name:Storage.Secret_name.t -> Age.recipient list -> unit) ->
+    get_updated_secret:(string option -> (string, string) result) ->
+    Storage.Secret_name.t ->
+    unit
+end
+
+module Create : sig
+  val add : comments:string option -> Storage.Secret_name.t -> string -> unit
+  val bare : f:(Storage.Secret_name.t -> 'a) -> Storage.Secret_name.t -> 'a
+end
+
+module Replace : sig
+  val replace_secret : Storage.Secret_name.t -> string -> unit
+  val replace_comment : Storage.Secret_name.t -> (string option -> string) -> unit
 end

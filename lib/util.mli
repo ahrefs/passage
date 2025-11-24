@@ -11,7 +11,7 @@ end
 
 module Secret : sig
   val decrypt_and_parse : ?silence_stderr:bool -> Storage.Secret_name.t -> Secret.t
-  val reconstruct_secret : comments:string option -> Secret.t -> string
+  val reconstruct_secret : ?comments:string -> Secret.t -> string
   val check_exists_or_die : Storage.Secret_name.t -> unit
   val check_path_exists_or_die : Storage.Secret_name.t -> Path.t -> unit
   val decrypt_silently : Storage.Secret_name.t -> string

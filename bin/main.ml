@@ -15,61 +15,6 @@ type output_mode =
 
 let verbose_eprintlf ?(verbose = false) fmt = if verbose then Devkit.eprintfn fmt else ksprintf (Fun.const ()) fmt
 
-module Edit = struct
-  let new_secret_recipients_notice =
-    {|
-If you are adding a new secret in a new folder, please keep recipients to a minimum and include the following:
-- @root
-- yourself
-- people who help manage the secret, or people who would have access to it anyway
-- people who need access to do their job
-- servers/clusters that will consume the secret
-
-If the secret is a staging secret, its only recipient should be @everyone.
-|}
-
-  let show_recipients_notice_if_true cond = if cond then prerr_endline new_secret_recipients_notice
-
-  let edit_secret ?(self_fallback = false) ?(verbose = false) secret_name ~allow_retry ~get_updated_secret =
-    let raw_secret_name = show_name secret_name in
-    let original_secret =
-      match Storage.Secrets.secret_exists secret_name with
-      | false -> None
-      | true ->
-      try Devkit.some @@ Storage.Secrets.decrypt_exn secret_name
-      with exn -> Shell.die ~exn "E: failed to decrypt %s" raw_secret_name
-    in
-    try
-      let updated_secret = get_updated_secret original_secret in
-      match updated_secret, original_secret with
-      | Ok updated_secret, Some original_secret when updated_secret = original_secret ->
-        prerr_endline "I: secret unchanged"
-      | Error e, _ -> Shell.die "E: %s" e
-      | Ok updated_secret, _ ->
-        let secret_path = path_of_secret_name secret_name in
-        let secret_recipients' = Storage.Secrets.get_recipients_from_path_exn secret_path in
-        let secret_recipients =
-          if secret_recipients' = [] && self_fallback then (
-            let own_recipients = Storage.Secrets.recipients_of_own_id () in
-            let () = Commands.Recipients.add_recipients_if_none_exists own_recipients secret_path in
-            Storage.Secrets.get_recipients_from_path_exn secret_path)
-          else secret_recipients'
-        in
-        if secret_recipients = [] then Exn.fail "E: no recipients specified for this secret"
-        else (
-          let is_first_secret_in_new_folder = Option.is_none original_secret && secret_recipients' = [] in
-          match allow_retry with
-          | true ->
-            show_recipients_notice_if_true is_first_secret_in_new_folder;
-            Retry.encrypt_with_retry ~plaintext:updated_secret ~secret_name secret_recipients
-          | false ->
-          try
-            show_recipients_notice_if_true is_first_secret_in_new_folder;
-            Storage.Secrets.encrypt_exn ~verbose ~plaintext:updated_secret ~secret_name secret_recipients
-          with exn -> Exn.fail ~exn "E: encrypting %s failed" raw_secret_name)
-    with Failure s -> Shell.die "%s" s
-end
-
 module Converters = struct
   let secret_arg =
     let parse secret_name = try Ok (Storage.Secrets.build_secret_name secret_name) with Failure s -> Error (`Msg s) in
@@ -179,43 +124,24 @@ module Rm_who = struct
 end
 
 module Create = struct
-  let create_new_secret_from_stdin verbose secret_name comment_opt =
-    let create_new_secret verbose secret_name =
-      Edit.edit_secret secret_name ~verbose ~self_fallback:true ~allow_retry:false ~get_updated_secret:(fun _ ->
-          let () = input_help_if_user_input () in
-          match get_valid_input_from_stdin_exn () with
-          | Error e -> Shell.die "E: %s" e
-          | Ok plaintext_secret ->
-            let parsed_secret = Secret.Validation.parse_exn plaintext_secret in
-            let comment =
-              match comment_opt, parsed_secret.comments with
-              | Some comment, None | None, Some comment -> comment
-              | None, None -> ""
-              | Some _, Some _ ->
-                Shell.die
-                  "E: secret text already contains comments. Either use the secret text with comments or use the \
-                   --comment flag."
-            in
-            (match Validation.validate_comments comment with
-            | Error e -> Shell.die "E: invalid comment format: %s" e
-            | Ok c -> Ok (reconstruct_secret ~comments:(Some c) parsed_secret)))
-    in
-    match Storage.Secrets.secret_exists secret_name with
-    | true -> Shell.die "E: refusing to create: a secret by that name already exists"
-    | false ->
+  let create_new_secret_from_stdin ~comments secret_name =
     try
-      let path = Storage.Secrets.(to_path secret_name) in
-      Invariant.die_if_invariant_fails ~op_string:"create" path;
-      create_new_secret verbose secret_name
+      match get_valid_input_from_stdin_exn () with
+      | Error e -> Shell.die "E: %s" e
+      | Ok plaintext_secret -> Commands.Create.add ~comments secret_name plaintext_secret
     with Failure s -> Shell.die "%s" s
-
   let create =
     let doc =
       {| creates a new secret from stdin. If the folder doesn't have recipients specified already,
       tries to set them to the ones associated with \${PASSAGE_IDENTITY} |}
     in
     let info = Cmd.info "create" ~doc in
-    let term = Term.(const (create_new_secret_from_stdin false) $ Flags.secret_name $ Flags.comment) in
+    let term =
+      Term.(
+        const (fun secret_name comments -> create_new_secret_from_stdin ~comments secret_name)
+        $ Flags.secret_name
+        $ Flags.comment)
+    in
     Cmd.v info term
 end
 
@@ -226,7 +152,8 @@ module Edit_cmd = struct
       Invariant.run_if_recipient ~op_string:"edit secret"
         ~path:Storage.Secrets.(to_path secret_name)
         ~f:(fun () ->
-          Edit.edit_secret secret_name ~allow_retry:true ~get_updated_secret:(fun initial ->
+          Commands.Edit.edit_secret secret_name ~allow_retry:Retry.encrypt_with_retry
+            ~get_updated_secret:(fun initial ->
               let initial_content =
                 Option.map (fun i -> i ^ Secret.format_explainer) initial
                 |> Option.value ~default:Secret.format_explainer
@@ -273,7 +200,7 @@ module Edit_comments = struct
           | None, true -> prerr_endline "I: comments unchanged"
           | Some old, false when old = new_comments -> prerr_endline "I: comments unchanged"
           | _ ->
-            let updated_secret = reconstruct_secret ~comments:(Some new_comments) parsed_secret in
+            let updated_secret = reconstruct_secret ~comments:new_comments parsed_secret in
             let secret_recipients = Util.Recipients.get_recipients_or_die secret_name in
             (try Retry.encrypt_with_retry ~plaintext:updated_secret ~secret_name secret_recipients
              with exn -> Shell.die ~exn "E: encrypting %s failed" (show_name secret_name)))
@@ -468,7 +395,7 @@ Checking for validity of own secrets. Use -v flag to break down per secret
                       | Upgrade, SingleLineLegacy ->
                         (try
                            let parsed_secret = Secret.Validation.parse_exn secret_text in
-                           let upgraded_secret = reconstruct_secret ~comments:parsed_secret.comments parsed_secret in
+                           let upgraded_secret = reconstruct_secret ?comments:parsed_secret.comments parsed_secret in
                            let recipients = Util.Recipients.get_recipients_or_die secret_name in
                            Storage.Secrets.encrypt_exn ~verbose:false ~plaintext:upgraded_secret ~secret_name recipients;
                            Devkit.eprintfn "I: updated %s" (show_name secret_name);
@@ -515,7 +442,8 @@ module Init = struct
 end
 
 module List_ = struct
-  let list_secrets path = try Commands.List_.list_secrets path with Failure s -> Shell.die "%s" s
+  let list_secrets path =
+    try Commands.List_.list_secrets path |> List.iter print_endline with Failure s -> Shell.die "%s" s
 
   let list =
     let doc = "recursively list all secrets" in
@@ -531,30 +459,26 @@ module List_ = struct
 end
 
 module New = struct
-  let create_new_secret verbose secret_name =
-    let () =
-      Edit.edit_secret ~verbose ~self_fallback:true secret_name ~allow_retry:true ~get_updated_secret:(fun initial ->
-          let initial_content = Option.value ~default:Secret.format_explainer initial in
-          Editor.edit_with_validation ~initial:initial_content ~validate:Validation.validate_secret ())
-    in
-    let original_recipients = Storage.Secrets.(get_recipients_from_path_exn @@ to_path secret_name) in
-    Edit.show_recipients_notice_if_true (original_recipients = []);
-    if yesno "Edit recipients for this secret?" then edit_recipients secret_name
-
-  let create_new_secret' secret_name =
-    if Storage.Secrets.secret_exists secret_name then
-      Shell.die "E: refusing to create: a secret by that name already exists"
-    else (
-      try
-        let path = Storage.Secrets.(to_path secret_name) in
-        let () = Invariant.die_if_invariant_fails ~op_string:"create" path in
-        create_new_secret false secret_name
-      with Failure s -> Shell.die "%s" s)
+  let create_new_secret secret_name =
+    try
+      let wiz secret_name =
+        let () =
+          Commands.Edit.edit_secret ~self_fallback:true secret_name ~allow_retry:Retry.encrypt_with_retry
+            ~get_updated_secret:(fun initial ->
+              let initial_content = Option.value ~default:Secret.format_explainer initial in
+              Editor.edit_with_validation ~initial:initial_content ~validate:Validation.validate_secret ())
+        in
+        let original_recipients = Storage.Secrets.(get_recipients_from_path_exn @@ to_path secret_name) in
+        Commands.Edit.show_recipients_notice_if_true (original_recipients = []);
+        if yesno "Edit recipients for this secret?" then edit_recipients secret_name
+      in
+      Commands.Create.bare ~f:wiz secret_name
+    with Failure s -> Shell.die "%s" s
 
   let new_ =
     let doc = "interactive creation of a new single-line secret" in
     let info = Cmd.info "new" ~doc in
-    let term = Term.(const create_new_secret' $ Flags.secret_name) in
+    let term = Term.(const create_new_secret $ Flags.secret_name) in
     Cmd.v info term
 end
 
@@ -594,47 +518,8 @@ end
 module Replace = struct
   let replace_secret secret_name =
     try
-      let recipients = Util.Recipients.get_recipients_or_die secret_name in
-      Invariant.run_if_recipient ~op_string:"replace secret"
-        ~path:Storage.Secrets.(to_path secret_name)
-        ~f:(fun () ->
-          let () = input_help_if_user_input () in
-          (* We don't need to run validation for the input here since we will be replacing only the secret
-              and not the whole file *)
-          let new_secret_plaintext = In_channel.input_all stdin in
-          if new_secret_plaintext = "" then Shell.die "E: invalid input, empty secrets are not allowed.";
-          let is_singleline_secret =
-            (* New secret is single line if doesn't have a newline character or if it has only one,
-                at the end of the first line. This input isn't supposed to follow the storage format,
-               it only contains a secret and no comments *)
-            match String.split_on_char '\n' new_secret_plaintext with
-            | [ _ ] | [ _; "" ] -> true
-            | _ -> false
-          in
-          let updated_secret =
-            match Storage.Secrets.secret_exists secret_name with
-            | false ->
-              (* if the secret doesn't exist yet, create a new secret with the right format *)
-              (match is_singleline_secret with
-              | true -> new_secret_plaintext
-              | false -> "\n\n" ^ new_secret_plaintext)
-            | true ->
-              (* if there is already a secret, recreate or replace it *)
-              let original_secret =
-                try
-                  let secret_plaintext = Storage.Secrets.decrypt_exn ~silence_stderr:true secret_name in
-                  Secret.Validation.parse_exn secret_plaintext
-                with _e ->
-                  Shell.die
-                    "E: unable to parse secret %s's format. If we proceed, the comments will be lost. Aborting. Please \
-                     use the edit command to replace and fix this secret."
-                    (show_name secret_name)
-              in
-              reconstruct_with_new_text ~is_singleline:is_singleline_secret ~new_text:new_secret_plaintext
-                ~existing_comments:original_secret.comments
-          in
-          try Storage.Secrets.encrypt_exn ~verbose:false ~plaintext:updated_secret ~secret_name recipients
-          with exn -> Shell.die ~exn "E: encrypting %s failed" (show_name secret_name))
+      let () = input_help_if_user_input () in
+      Commands.Replace.replace_secret secret_name (In_channel.input_all stdin)
     with Failure s -> Shell.die "%s" s
 
   let replace =
@@ -650,29 +535,11 @@ end
 module Replace_comments = struct
   let replace_comment secret_name =
     try
-      let secret_name_str = show_name secret_name in
-      let recipients = Util.Recipients.get_recipients_or_die secret_name in
-      Invariant.run_if_recipient ~op_string:"replace comments"
-        ~path:Storage.Secrets.(to_path secret_name)
-        ~f:(fun () ->
-          match Storage.Secrets.secret_exists secret_name with
-          | false -> Shell.die "E: no such secret: %s" secret_name_str
-          | true ->
-            let original_secret =
-              try decrypt_and_parse ~silence_stderr:true secret_name
-              with _e ->
-                Shell.die
-                  "E: unable to parse secret %s's format. Please fix it before replacing the comments,or use the edit \
-                   command"
-                  secret_name_str
-            in
-            let new_comments =
-              get_comments ?initial:original_secret.comments
-                ~help_message:"Please type the new comments and then do Ctrl+d twice to terminate input" ()
-            in
-            let updated_secret = reconstruct_secret ~comments:(Some new_comments) original_secret in
-            (try Storage.Secrets.encrypt_exn ~verbose:false ~plaintext:updated_secret ~secret_name recipients
-             with exn -> Shell.die ~exn "E: encrypting %s failed" secret_name_str))
+      let get_new_comments original_comments =
+        get_comments ?initial:original_comments
+          ~help_message:"Please type the new comments and then do Ctrl+d twice to terminate input" ()
+      in
+      Commands.Replace.replace_comment secret_name get_new_comments
     with Failure s -> Shell.die "%s" s
 
   let replace_comments =
@@ -688,16 +555,8 @@ module Rm = struct
     Arg.(value & flag & info [ "f"; "force" ] ~doc)
 
   let rm_secrets verbose paths force =
-    let rm_result ~path ~force =
-      let is_directory = Path.is_directory (Path.abs path) in
-      let string_path = show_path path in
-      if force then Storage.Secrets.rm ~is_directory path
-      else (
-        match yesno_tty_check (sprintf "Are you sure you want to delete %s?" string_path) with
-        | NoTTY | TTY true -> Storage.Secrets.rm ~is_directory path
-        | TTY false -> Storage.Secrets.Skipped)
-    in
-    try Commands.Rm.rm_secrets ~verbose ~paths ~force ~f:rm_result with Failure s -> Shell.die "%s" s
+    let confirm ~path = yesno (sprintf "Are you sure you want to delete %s?" (show_path path)) in
+    try Commands.Rm.rm_secrets ~verbose ~paths ~force ~confirm () with Failure s -> Shell.die "%s" s
 
   let rm =
     let doc = "remove a secret or a folder and its secrets" in
