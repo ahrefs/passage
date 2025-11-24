@@ -52,12 +52,6 @@ module Secret = struct
     | Secret.Singleline -> Secret.singleline_from_text_description text (Option.value ~default:"" comments)
     | Secret.Multiline -> Secret.multiline_from_text_description text (Option.value ~default:"" comments)
 
-  (** Check if a secret exists, die with standard error if not *)
-  let check_exists secret_name =
-    match Storage.Secrets.secret_exists secret_name with
-    | false -> die "E: no such secret: %s" (show_name secret_name)
-    | true -> ()
-
   (** Check if a secret exists, die with hint about create/new if not *)
   let check_exists_or_die secret_name =
     match Storage.Secrets.secret_exists secret_name with

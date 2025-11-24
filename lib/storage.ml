@@ -188,29 +188,6 @@ module Secrets = struct
            | _ -> recipient :: acc)
          []
 
-  let get_expanded_recipient_names secret_name =
-    let full_path = Path.concat (Path.inject !!base_dir) (to_path secret_name) in
-    let recipients' = Action.config_lines @@ Filename.concat (Path.project full_path) keys_ext in
-    let groups, recipients = List.partition Age.is_group_recipient recipients' in
-    let group_recipients =
-      List.map
-        (fun group ->
-          try
-            let recipients = recipients_of_group_name_exn ~map_fn:recipient_of_name group in
-            List.map (fun (r : Age.recipient) -> r.name) recipients
-          with _ -> [])
-        groups
-      |> List.flatten
-    in
-    recipients @ group_recipients
-    |> List.sort String.compare
-    |> List.fold_right
-         (fun recipient acc ->
-           match acc with
-           | r' :: _ when r' = recipient -> acc
-           | _ -> recipient :: acc)
-         []
-
   let is_recipient_of_secret key secret_name =
     let recipients = get_recipients_from_path_exn (to_path secret_name) in
     let recipients_keys = Age.get_recipients_keys recipients in
