@@ -2,7 +2,7 @@ open Printf
 open Util.Show
 
 module Init = struct
-  let init () =
+  let init ?use_sudo () =
     try
       (* create private and pub key, ask for user's name *)
       let () =
@@ -33,7 +33,7 @@ What should be the name used for your recipient identity?|}
                | '\n' -> ""
                | c -> Char.escaped c)
       in
-      let () = Shell.age_generate_identity_key_root_group_exn user_name in
+      let () = Shell.age_generate_identity_key_root_group_exn ?use_sudo user_name in
       Util.verbose_eprintlf "I: Passage setup completed.\n"
     with exn ->
       (* Error out and delete everything, so we can start fresh next time *)
@@ -42,7 +42,7 @@ What should be the name used for your recipient identity?|}
 end
 
 module Get = struct
-  let get_secret ?expected_kind ?line_number ~with_comments ?(trim_new_line = false) secret_name =
+  let get_secret ?use_sudo ?expected_kind ?line_number ~with_comments ?(trim_new_line = false) secret_name =
     let secret_exists =
       try Storage.Secrets.secret_exists secret_name with exn -> Util.die ~exn "E: %s" (show_name secret_name)
     in
@@ -61,7 +61,7 @@ module Get = struct
       | Some l -> l
     in
     let plaintext =
-      try Storage.Secrets.decrypt_exn secret_name
+      try Storage.Secrets.decrypt_exn ?use_sudo secret_name
       with exn -> Util.die ~exn "E: failed to decrypt %s" (show_name secret_name)
     in
     let secret =
@@ -137,7 +137,7 @@ module Recipients = struct
       Devkit.Control.with_open_out_txt (show_path recipients_file_path) (fun oc ->
           List.iter (fun line -> Printf.fprintf oc "%s\n" line) recipients_names_with_root_group)
 
-  let rewrite_recipients_file secret_name new_recipients_list =
+  let rewrite_recipients_file ?use_sudo secret_name new_recipients_list =
     let secret_path = path_of_secret_name secret_name in
     let sorted_base_recipients = Storage.Secrets.get_recipients_names secret_path in
     let secret_recipients_file = Storage.Secrets.get_recipients_file_path secret_path in
@@ -153,10 +153,11 @@ module Recipients = struct
       let secrets_affected = Storage.Secrets.get_secrets_in_folder (Path.folder_of_path secret_path) in
       (* it might be that we are creating a secret in a new folder and adding new recipients,
          so we have no extra affected secrets. Only refresh if there are affected secrets *)
-      if secrets_affected <> [] then Storage.Secrets.refresh ~force:true ~verbose:false secrets_affected else ())
+      if secrets_affected <> [] then Storage.Secrets.refresh ?use_sudo ~force:true ~verbose:false secrets_affected
+      else ())
     else prerr_endline "I: no changes made to the recipients"
 
-  let add_recipients_to_secret secret_name recipients_to_add =
+  let add_recipients_to_secret ?use_sudo secret_name recipients_to_add =
     let secret_path = path_of_secret_name secret_name in
     Util.Secret.check_path_exists_or_die secret_name secret_path;
     Invariant.run_if_recipient ~op_string:"add recipients" ~path:secret_path ~f:(fun () ->
@@ -170,11 +171,11 @@ module Recipients = struct
         match List.equal String.equal current_recipients new_recipients with
         | true -> prerr_endline "I: no changes made - all specified recipients are already present"
         | false ->
-          let () = rewrite_recipients_file secret_name new_recipients in
+          let () = rewrite_recipients_file ?use_sudo secret_name new_recipients in
           let added_count = List.length new_recipients - List.length current_recipients in
           Devkit.eprintfn "I: added %d recipient%s" added_count (if added_count = 1 then "" else "s"))
 
-  let remove_recipients_from_secret secret_name recipients_to_remove =
+  let remove_recipients_from_secret ?use_sudo secret_name recipients_to_remove =
     let secret_path = path_of_secret_name secret_name in
     Util.Secret.check_path_exists_or_die secret_name secret_path;
     Invariant.run_if_recipient ~op_string:"remove recipients" ~path:secret_path ~f:(fun () ->
@@ -194,7 +195,7 @@ module Recipients = struct
               Devkit.eprintfn "W: recipients not found to remove: %s" (String.concat ", " non_existent)
             else ()
           in
-          let () = rewrite_recipients_file secret_name new_recipients in
+          let () = rewrite_recipients_file ?use_sudo secret_name new_recipients in
           let removed_count = List.length current_recipients - List.length new_recipients in
           Devkit.eprintfn "I: removed %d recipient%s" removed_count (if removed_count = 1 then "" else "s")))
 
@@ -283,7 +284,7 @@ module Recipients = struct
 end
 
 module Refresh = struct
-  let refresh_secrets ?(verbose = false) paths =
+  let refresh_secrets ?use_sudo ?(verbose = false) paths =
     let secrets =
       List.fold_left
         (fun acc path ->
@@ -297,7 +298,7 @@ module Refresh = struct
         [] paths
     in
     let secrets = List.sort_uniq Storage.Secret_name.compare secrets in
-    Storage.Secrets.refresh ~verbose secrets
+    Storage.Secrets.refresh ?use_sudo ~verbose secrets
 end
 
 module Template = struct

@@ -219,9 +219,9 @@ module Secrets = struct
   (* Outputs encrypted text to a tmpfile first, before replacing the secret (if it already exists)
      with the tmpfile. This is to handle exceptional situations where the encryption is interrupted halfway.
   *)
-  let encrypt_using_tmpfile ~secret_name ~plaintext ~recipients =
+  let encrypt_using_tmpfile ~secret_name ~plaintext ?use_sudo recipients =
     let secret_file = Path.abs @@ agefile_of_name secret_name in
-    let encrypted_content = Age.encrypt_string ~recipients plaintext in
+    let encrypted_content = Age.encrypt_string ?use_sudo ~recipients plaintext in
     let temp_dir = secret_file |> Path.ensure_parent |> Path.project in
     let tmpfile_suffix = sprintf ".%s.tmp" Path.(basename secret_file |> project) in
     let tmpfile, tmpfile_oc =
@@ -231,35 +231,35 @@ module Secrets = struct
     close_out tmpfile_oc;
     FileUtil.mv tmpfile (Path.project secret_file)
 
-  let encrypt_exn ?(verbose = false) ~plaintext ~secret_name recipients =
+  let encrypt_exn ?use_sudo ?(verbose = false) ~plaintext ~secret_name recipients =
     verbose_eprintlf ~verbose "I: encrypting %s for %s" (Secret_name.project secret_name)
       (List.map (fun r -> Age.(r.name)) recipients |> String.concat ", ");
-    encrypt_using_tmpfile ~secret_name ~plaintext ~recipients
+    encrypt_using_tmpfile ~secret_name ~plaintext recipients ?use_sudo
 
-  let decrypt_exn ?(silence_stderr = false) secret_name =
+  let decrypt_exn ?use_sudo ?(silence_stderr = false) secret_name =
     let secret_file = Path.(project @@ abs @@ agefile_of_name secret_name) in
     let ciphertext = Devkit.Control.with_input_txt secret_file IO.read_all in
-    Age.decrypt_string ~identity_file:(Lazy.force !Config.identity_file) ~silence_stderr ciphertext
+    Age.decrypt_string ?use_sudo ~identity_file:(Lazy.force !Config.identity_file) ~silence_stderr ciphertext
 
-  let refresh' ?(force = false) secret_name self_key =
+  let refresh' ?use_sudo ?(force = false) secret_name self_key =
     match force || is_recipient_of_secret self_key secret_name with
     | false -> Skipped
     | true ->
     try
       (* Simple decrypt -> re-encrypt flow *)
-      let plaintext = decrypt_exn ~silence_stderr:false secret_name in
+      let plaintext = decrypt_exn ?use_sudo ~silence_stderr:false secret_name in
       let recipients = get_recipients_from_path_exn (to_path secret_name) in
-      encrypt_using_tmpfile ~secret_name ~plaintext ~recipients;
+      encrypt_using_tmpfile ~secret_name ~plaintext recipients ?use_sudo;
       Succeeded ()
     with exn -> Failed exn
 
-  let refresh ~verbose ?force secrets =
-    let self_key = Age.Key.from_identity_file (Lazy.force !Config.identity_file) in
+  let refresh ?use_sudo ~verbose ?force secrets =
+    let self_key = Age.Key.from_identity_file ?use_sudo (Lazy.force !Config.identity_file) in
     let skipped, refreshed, failed =
       List.fold_left
         (fun (skipped, refreshed, failed) secret ->
           let raw_secret_name = Secret_name.project secret in
-          match refresh' ?force secret self_key with
+          match refresh' ?use_sudo ?force secret self_key with
           | Succeeded () ->
             let () = verbose_eprintlf ~verbose "I: refreshed %s" raw_secret_name in
             skipped, refreshed + 1, failed
