@@ -285,13 +285,30 @@ module Refresh = struct
   let refresh_secrets ?use_sudo ?(verbose = false) paths =
     let secrets =
       List.fold_left
-        (fun acc path ->
-          (match Storage.Secrets.get_secrets_tree path with
-          | _ :: _ as secrets -> secrets
-          | [] ->
-          match Storage.Secrets.secret_exists_at path with
-          | true -> [ secret_name_of_path path ]
-          | false -> Util.die "E: no secrets at %s" (show_path path))
+        (fun acc path_or_recip ->
+          (match Age.is_group_recipient path_or_recip with
+          | true ->
+            (* we need to clarify if the recipient is a group or a recipient, since we use the same syntax for both *)
+            let recipient =
+              let r = Devkit.Stre.drop_prefix path_or_recip "@" in
+              match List.mem r (Storage.Secrets.all_groups_names ()), r = "everyone" with
+              | false, false -> r
+              | _ -> path_or_recip
+            in
+            (match Storage.Secrets.get_secrets_for_recipient recipient with
+            | [] -> Util.die "E: no secrets found for recipient %s" path_or_recip
+            | secrets -> secrets)
+          | false ->
+            let path =
+              try Path.build_rel_path path_or_recip
+              with Failure s -> Util.die "E: invalid path %s: %s" path_or_recip s
+            in
+            (match Storage.Secrets.get_secrets_tree path with
+            | _ :: _ as secrets -> secrets
+            | [] ->
+            match Storage.Secrets.secret_exists_at path with
+            | true -> [ secret_name_of_path path ]
+            | false -> Util.die "E: no secrets at %s" path_or_recip))
           @ acc)
         [] paths
     in
@@ -447,7 +464,7 @@ If the secret is a staging secret, its only recipient should be @everyone.
             show_recipients_notice_if_true is_first_secret_in_new_folder;
             Storage.Secrets.encrypt_exn ~verbose ~plaintext:updated_secret ~secret_name secret_recipients
           with exn -> Util.die ~exn "E: encrypting %s failed" secret_name_str)
-    with Failure s -> Shell.die "%s" s
+    with Failure s -> Util.die "%s" s
 end
 
 module Create = struct
@@ -509,7 +526,7 @@ module Replace = struct
                 let secret_plaintext = Storage.Secrets.decrypt_exn ~silence_stderr:true secret_name in
                 Secret.Validation.parse_exn secret_plaintext
               with _e ->
-                Shell.die
+                Util.die
                   "E: unable to parse secret %s's format. If we proceed, the comments will be lost. Aborting. Please \
                    use the edit command to replace and fix this secret."
                   (show_name secret_name)

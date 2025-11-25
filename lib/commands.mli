@@ -27,7 +27,7 @@ module Recipients : sig
 end
 
 module Refresh : sig
-  val refresh_secrets : ?use_sudo:bool -> ?verbose:bool -> Path.t list -> unit
+  val refresh_secrets : ?use_sudo:bool -> ?verbose:bool -> string list -> unit
 end
 
 module Template : sig

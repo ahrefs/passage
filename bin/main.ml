@@ -72,6 +72,13 @@ module Flags = struct
     let doc = "list of relative $(docv)s from the secrets directory that will be used to process secrets" in
     Arg.(value & pos_all Converters.path_arg [ Path.inject "." ] & info [] ~docv:"PATH" ~doc)
 
+  let secrets_paths_or_recipients =
+    let doc =
+      "list of relative $(docv)s from the secrets directory or @recipient/@group names that will be used to process \
+       secrets"
+    in
+    Arg.(value & pos_all string [ "." ] & info [] ~docv:"PATH" ~doc)
+
   let verbose =
     let doc = "print verbose output during execution" in
     Arg.(value & flag & info [ "v"; "verbose" ] ~doc)
@@ -503,14 +510,17 @@ end
 
 module Refresh = struct
   let refresh =
-    let doc = "re-encrypt secrets in the specified path(s)" in
+    let doc =
+      "re-encrypt secrets in the specified path(s) or for the specified recipients. Use the @prefix to indicate \
+       recipients or groups of recipients."
+    in
     let info = Cmd.info "refresh" ~doc in
     let term =
       Term.(
         const (fun verbose paths ->
             try Commands.Refresh.refresh_secrets ~verbose paths with Failure s -> Shell.die "%s" s)
         $ Flags.verbose
-        $ Flags.secrets_paths)
+        $ Flags.secrets_paths_or_recipients)
     in
     Cmd.v info term
 end
@@ -765,7 +775,7 @@ let () =
  comments until end of file|};
     ]
   in
-  let info = Cmd.info "passage" ~envs ~doc ~man in
+  let info = Cmd.info "passage" ~version:"%%VERSION%%" ~envs ~doc ~man in
   let commands =
     [
       Add_who.add_who;
