@@ -68,3 +68,72 @@ Refreshing a path that has the same name as a secret - should refresh secrets in
   I: refreshed dir/secret1
   I: refreshed dir/secret2
   I: refreshed 2 secrets, skipped 0, failed 0
+
+Should succeed - @recipient syntax finds the same secrets as passage what
+  $ passage what bobby.bob
+  00/.secret_starting_with_dot
+  00/secret1
+  01/secret1
+  02/secret1
+  04/secret1
+  dir
+  dir/secret1
+  dir/secret2
+  test_secret
+  $ passage refresh -v @bobby.bob
+  I: refreshed 00/.secret_starting_with_dot
+  I: refreshed 00/secret1
+  I: refreshed 01/secret1
+  I: refreshed 02/secret1
+  I: refreshed 04/secret1
+  I: refreshed dir
+  I: refreshed dir/secret1
+  I: refreshed dir/secret2
+  I: refreshed test_secret
+  I: refreshed 9 secrets, skipped 0, failed 0
+
+Should succeed - refreshing for a group
+  $ passage what @root
+  03/secret1
+  04/secret1
+  $ passage refresh -v @root
+  I: skipped 03/secret1
+  I: refreshed 04/secret1
+  I: refreshed 1 secrets, skipped 1, failed 0
+  $ PASSAGE_IDENTITY="robby.rob.key" passage refresh -v @root
+  I: refreshed 03/secret1
+  I: refreshed 04/secret1
+  I: refreshed 2 secrets, skipped 0, failed 0
+
+Should succeed - refreshing for multiple recipients gets all their secrets
+  $ passage refresh -v @bobby.bob @robby.rob
+  I: refreshed 00/.secret_starting_with_dot
+  I: refreshed 00/secret1
+  I: skipped 01/00/secret1
+  I: skipped 01/00/secret2
+  I: refreshed 01/secret1
+  I: refreshed 02/secret1
+  I: skipped 03/secret1
+  I: refreshed 04/secret1
+  I: refreshed dir
+  I: refreshed dir/secret1
+  I: refreshed dir/secret2
+  I: refreshed test_secret
+  I: refreshed 9 secrets, skipped 3, failed 0
+
+Should succeed - Non-existent recipient still finds @everyone secrets
+  $ passage refresh -v @non.existent.user
+  I: refreshed 04/secret1
+  I: refreshed 1 secrets, skipped 0, failed 0
+
+Should fail - when no secrets exist for a recipient
+  $ passage rm -f 04/secret1
+  $ passage refresh @non.existent.user
+  E: no secrets found for recipient @non.existent.user
+  [1]
+
+Should succeed - mixing path and recipient arguments
+  $ passage refresh -v test_secret @root
+  I: skipped 03/secret1
+  I: refreshed test_secret
+  I: refreshed 1 secrets, skipped 1, failed 0

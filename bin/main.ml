@@ -137,6 +137,13 @@ module Flags = struct
     let doc = "list of relative $(docv)s from the secrets directory that will be used to process secrets" in
     Arg.(value & pos_all Converters.path_arg [ Path.inject "." ] & info [] ~docv:"PATH" ~doc)
 
+  let secrets_paths_or_recipients =
+    let doc =
+      "list of relative $(docv)s from the secrets directory or @recipient/@group names that will be used to process \
+       secrets"
+    in
+    Arg.(value & pos_all string [ "." ] & info [] ~docv:"PATH" ~doc)
+
   let verbose =
     let doc = "print verbose output during execution" in
     Arg.(value & flag & info [ "v"; "verbose" ] ~doc)
@@ -664,13 +671,30 @@ module Refresh = struct
   let refresh_secrets ?(verbose = false) paths =
     let secrets =
       List.fold_left
-        (fun acc path ->
-          (match Storage.Secrets.get_secrets_tree path with
-          | _ :: _ as secrets -> secrets
-          | [] ->
-          match Storage.Secrets.secret_exists_at path with
-          | true -> [ secret_name_of_path path ]
-          | false -> Shell.die "E: no secrets at %s" (show_path path))
+        (fun acc path_or_recip ->
+          (match Age.is_group_recipient path_or_recip with
+          | true ->
+            (* we need to clarify if the recipient is a group or a recipient, since we use the same syntax for both *)
+            let recipient =
+              let r = Devkit.Stre.drop_prefix path_or_recip "@" in
+              match List.mem r (Storage.Secrets.all_groups_names ()), r = "everyone" with
+              | false, false -> r
+              | _ -> path_or_recip
+            in
+            (match Storage.Secrets.get_secrets_for_recipient recipient with
+            | [] -> Shell.die "E: no secrets found for recipient %s" path_or_recip
+            | secrets -> secrets)
+          | false ->
+            let path =
+              try Path.build_rel_path path_or_recip
+              with Failure s -> Shell.die "E: invalid path %s: %s" path_or_recip s
+            in
+            (match Storage.Secrets.get_secrets_tree path with
+            | _ :: _ as secrets -> secrets
+            | [] ->
+            match Storage.Secrets.secret_exists_at path with
+            | true -> [ secret_name_of_path path ]
+            | false -> Shell.die "E: no secrets at %s" path_or_recip))
           @ acc)
         [] paths
     in
@@ -678,9 +702,14 @@ module Refresh = struct
     Storage.Secrets.refresh ~verbose secrets
 
   let refresh =
-    let doc = "re-encrypt secrets in the specified path(s)" in
+    let doc =
+      "re-encrypt secrets in the specified path(s) or for the specified recipients. Use the @prefix to indicate \
+       recipients or groups of recipients."
+    in
     let info = Cmd.info "refresh" ~doc in
-    let term = Term.(const (fun verbose -> refresh_secrets ~verbose) $ Flags.verbose $ Flags.secrets_paths) in
+    let term =
+      Term.(const (fun verbose -> refresh_secrets ~verbose) $ Flags.verbose $ Flags.secrets_paths_or_recipients)
+    in
     Cmd.v info term
 end
 

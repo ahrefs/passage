@@ -1,3 +1,6 @@
+## Unreleased
+- Update refresh command to handle users and groups via the @<user_or_group> target syntax
+
 ## 0.1.8 (2025-10-21)
 - deep refactor of the code
   - more code moved to the lib, cleaner main.ml file
