@@ -1097,7 +1097,7 @@ let () =
  comments until end of file|};
     ]
   in
-  let info = Cmd.info "passage" ~envs ~doc ~man in
+  let info = Cmd.info "passage" ~version:"%%VERSION%%" ~envs ~doc ~man in
   let commands =
     [
       Add_who.add_who;

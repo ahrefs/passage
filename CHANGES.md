@@ -1,5 +1,6 @@
 ## Unreleased
 - Update refresh command to handle users and groups via the @<user_or_group> target syntax
+- Add --version flag to passage command
 
 ## 0.1.8 (2025-10-21)
 - deep refactor of the code
