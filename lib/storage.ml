@@ -8,16 +8,14 @@ module Secret_name = struct
   let norm_secret secret = project secret |> Path.build_rel_path |> Path.project |> inject
 end
 
-let ( !! ) = Lazy.force
-
 module Keys = struct
-  let base_dir = !Config.keys_dir
+  let get_keys_dir () = Lazy.force !Config.keys_dir
   let ext = "pub"
 
   (** Takes the recipient name and returns the full path to the public key of the recipient *)
   let key_file_of_recipient_name recipient_name =
     let base_key_file_name = FilePath.add_extension recipient_name ext in
-    Filename.concat !!base_dir base_key_file_name |> Path.inject
+    Filename.concat (get_keys_dir ()) base_key_file_name |> Path.inject
 
   let get_keys key_file =
     match Path.file_exists key_file with
@@ -27,9 +25,9 @@ module Keys = struct
   let keys_of_recipient (name : string) = get_keys @@ key_file_of_recipient_name name
 
   let all_recipient_names () =
-    FileUtil.find ~follow:Follow (Has_extension ext) !!base_dir
+    FileUtil.find ~follow:Follow (Has_extension ext) (get_keys_dir ())
       (fun acc f ->
-        let name = FilePath.make_relative !!base_dir f in
+        let name = FilePath.make_relative (get_keys_dir ()) f in
         let name = Stre.drop_suffix name ("." ^ ext) in
         name :: acc)
       []
@@ -42,7 +40,7 @@ module Secrets = struct
     | Failed of exn
     | Skipped
 
-  let base_dir = !Config.secrets_dir
+  let get_secrets_dir () = Lazy.force !Config.secrets_dir
   let ext = Age.ext
   let groups_ext = "group"
 
@@ -56,7 +54,7 @@ module Secrets = struct
 
   let name_of_file file =
     let fname = Path.project file in
-    Stre.after fname (!!base_dir ^ Filename.dir_sep) |> FilePath.chop_extension |> Secret_name.inject
+    Stre.after fname (get_secrets_dir () ^ Filename.dir_sep) |> FilePath.chop_extension |> Secret_name.inject
 
   let secret_exists secret_name = Path.abs (agefile_of_name secret_name) |> Path.file_exists
 
@@ -82,22 +80,23 @@ module Secrets = struct
     FileUtil.(ls full_path |> filter (Has_extension ext)) |> Path.inject_list |> List.map name_of_file
 
   let all_paths () =
-    FileUtil.find FileUtil.Is_dir !!base_dir
-      (fun accum f -> Option.map Path.of_fpath (Fpath.relativize ~root:(Fpath.v !!base_dir) (Fpath.v f)) :: accum)
+    FileUtil.find FileUtil.Is_dir (get_secrets_dir ())
+      (fun accum f ->
+        Option.map Path.of_fpath (Fpath.relativize ~root:(Fpath.v (get_secrets_dir ())) (Fpath.v f)) :: accum)
       []
     |> List.filter_map Fun.id
 
   let has_secret_no_keys path =
-    let path_str = Path.(concat (inject !!base_dir) path |> project) in
+    let path_str = Path.(concat (inject (get_secrets_dir ())) path |> project) in
     let has_secret = FileUtil.(ls path_str |> filter (Has_extension ext)) <> [] in
     has_secret && (not @@ Sys.file_exists (Filename.concat path_str keys_ext))
 
   let no_keys_file path =
-    let path_str = Path.concat (Path.inject !!base_dir) path |> Path.project in
+    let path_str = Path.concat (Path.inject (get_secrets_dir ())) path |> Path.project in
     not @@ Sys.file_exists (Filename.concat path_str keys_ext)
 
   let all_groups_names () =
-    FileUtil.(ls (Lazy.force !Config.keys_dir) |> filter (Has_extension groups_ext))
+    FileUtil.(ls (Keys.get_keys_dir ()) |> filter (Has_extension groups_ext))
     |> List.map (fun group -> FilePath.chop_extension @@ Filename.basename group)
     |> List.sort String.compare
 
@@ -115,9 +114,7 @@ module Secrets = struct
         (* We don't want to allow referencing non existent groups *)
         | false -> failwith (sprintf "E: group %S doesn't exist" group_name')
         | true ->
-          let group_file =
-            FilePath.concat (Lazy.force !Config.keys_dir) (FilePath.add_extension group_name groups_ext)
-          in
+          let group_file = FilePath.concat (Keys.get_keys_dir ()) (FilePath.add_extension group_name groups_ext) in
           Action.config_lines group_file)
     in
     List.map map_fn recipients_names
@@ -160,13 +157,13 @@ module Secrets = struct
       in
       List.fold_left (fun accum subdir -> get_secrets subdir accum) accum' subdirs
     in
-    get_secrets !!base_dir []
+    get_secrets (get_secrets_dir ()) []
 
   (** Returns the path to the .keys file for a secret *)
   let get_recipients_file_path path_to_secret =
     let open Path in
     let path_to_secret = if is_directory @@ abs path_to_secret then path_to_secret else dirname path_to_secret in
-    concat (concat (inject !!base_dir) path_to_secret) (inject keys_ext)
+    concat (concat (inject (get_secrets_dir ())) path_to_secret) (inject keys_ext)
 
   let get_recipients_names path =
     Action.config_lines (Path.project (get_recipients_file_path path)) |> List.sort String.compare
@@ -230,13 +227,15 @@ module Secrets = struct
       Succeeded ()
     with exn -> Failed exn
 
+  let get_own_key ?use_sudo () = Age.Key.from_identity_file ?use_sudo (Lazy.force !Config.identity_file)
+
   let refresh ?use_sudo ~verbose ?force secrets =
-    let self_key = Age.Key.from_identity_file ?use_sudo (Lazy.force !Config.identity_file) in
+    let own_key = get_own_key ?use_sudo () in
     let skipped, refreshed, failed =
       List.fold_left
         (fun (skipped, refreshed, failed) secret ->
           let raw_secret_name = Secret_name.project secret in
-          match refresh' ?use_sudo ?force secret self_key with
+          match refresh' ?use_sudo ?force secret own_key with
           | Succeeded () ->
             let () = verbose_eprintlf ~verbose "I: refreshed %s" raw_secret_name in
             skipped, refreshed + 1, failed
@@ -271,9 +270,8 @@ module Secrets = struct
       Succeeded ()
     with exn -> Failed exn
 
-  let search secret_name pattern =
-    let self_key = Age.Key.from_identity_file (Lazy.force !Config.identity_file) in
-    match is_recipient_of_secret self_key secret_name with
+  let search ?use_sudo secret_name pattern =
+    match is_recipient_of_secret (get_own_key ?use_sudo ()) secret_name with
     | false -> Skipped
     | true ->
     match decrypt_exn ~silence_stderr:true secret_name with
@@ -283,12 +281,11 @@ module Secrets = struct
       Succeeded matched
 
   (** Returns a list with the keys that are recipients for the default identity file *)
-  let recipients_of_own_id () =
-    let own_key = Age.Key.from_identity_file (Lazy.force !Config.identity_file) in
+  let recipients_of_own_id ?use_sudo () =
     Keys.all_recipient_names ()
     |> List.filter_map (fun name ->
            let keys = Keys.keys_of_recipient name in
-           match List.mem own_key keys with
+           match List.mem (get_own_key ?use_sudo ()) keys with
            | true -> Some { Age.name; keys }
            | false -> None)
 end

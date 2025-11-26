@@ -8,8 +8,6 @@ and node = string * t
 
 type top = Top of node
 
-let self_key = lazy (Age.Key.from_identity_file @@ Lazy.force !Config.identity_file)
-
 (* always recurse on directories and keep files with extension [ext] *)
 let ext_filt ext base nm sub =
   let full = Fpath.add_seg base nm in
@@ -22,8 +20,7 @@ let ext_filt ext base nm sub =
       let name = name_of_file (Path.of_fpath full) in
       let res =
         try
-          let self_key = Lazy.force self_key in
-          match is_recipient_of_secret self_key name with
+          match is_recipient_of_secret (get_own_key ()) name with
           | false -> Skipped
           | true ->
           match decrypt_exn ~silence_stderr:true name with
@@ -35,13 +32,11 @@ let ext_filt ext base nm sub =
     else None
   with _ -> None
 
-let filt = ext_filt ext
-
 let of_path path =
   let rec sub p =
     let names = Sys.readdir (Fpath.to_string p) in
     Array.sort compare names;
-    names |> Array.to_list |> List.filter_map (fun v -> filt p v sub)
+    names |> Array.to_list |> List.filter_map (fun v -> ext_filt ext p v sub)
   in
   let sp = sub path in
   Top (Fpath.to_string path, D sp)

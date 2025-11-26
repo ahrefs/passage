@@ -347,7 +347,7 @@ module Realpath = struct
              Ok (show_path (Path.abs (Storage.Secrets.agefile_of_name secret_name))))
            else if Path.is_directory abs_path then (
              let str = show_path abs_path in
-             if Path.is_dot (Path.build_rel_path (show_path path)) then Ok (Lazy.force Storage.Secrets.base_dir ^ "/")
+             if Path.is_dot (Path.build_rel_path (show_path path)) then Ok (Storage.Secrets.get_secrets_dir () ^ "/")
              else Ok (str ^ if String.ends_with ~suffix:"/" str then "" else "/"))
            else Error (sprintf "real path of secret/folder %S not found" (show_path path)))
 end

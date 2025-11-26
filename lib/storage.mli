@@ -21,7 +21,8 @@ module Secrets : sig
     | Failed of exn
     | Skipped
 
-  val base_dir : string lazy_t
+  val get_secrets_dir : unit -> string
+  val get_own_key : ?use_sudo:bool -> unit -> Age.Key.t
   val ext : string
   val to_path : Secret_name.t -> Path.t
   val agefile_of_name : Secret_name.t -> Path.t
@@ -47,6 +48,6 @@ module Secrets : sig
   val decrypt_exn : ?use_sudo:bool -> ?silence_stderr:bool -> Secret_name.t -> string
   val refresh : ?use_sudo:bool -> verbose:bool -> ?force:bool -> Secret_name.t list -> unit
   val rm : is_directory:bool -> Path.t -> unit outcome
-  val search : Secret_name.t -> Re2.t -> bool outcome
-  val recipients_of_own_id : unit -> Age.recipient list
+  val search : ?use_sudo:bool -> Secret_name.t -> Re2.t -> bool outcome
+  val recipients_of_own_id : ?use_sudo:bool -> unit -> Age.recipient list
 end
