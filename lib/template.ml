@@ -9,13 +9,13 @@ let parse_file file =
   let s = In_channel.input_all ic in
   parse s
 
-let substitute_iden node =
+let substitute_iden ?use_sudo node =
   match node with
   | Template_ast.Text _ -> node
   | Template_ast.Iden name ->
     let secret_name = Storage.Secret_name.inject name in
     (try
-       let plaintext = Util.Secret.decrypt_silently secret_name in
+       let plaintext = Util.Secret.decrypt_silently ?use_sudo secret_name in
        let secret = Secret.Validation.parse_exn plaintext in
        Template_ast.Text secret.text
      with
@@ -32,15 +32,3 @@ let build_text_from_ast ast =
       | Template_ast.Iden secret_name -> Devkit.Exn.fail "found unsubstituted secret %s" secret_name)
     ast
   |> String.concat ""
-
-let substitute ~template ?(file_out = None) () =
-  let substituted_ast = List.map substitute_iden template in
-  let contents = build_text_from_ast substituted_ast in
-  match file_out with
-  | None -> print_string contents
-  | Some target_file ->
-    Devkit.Files.save_as (Path.project target_file) ~mode:0o600 (fun oc -> Out_channel.output_string oc contents)
-
-let substitute_file ~template_file ~target_file =
-  let template = parse_file template_file in
-  substitute ~template ~file_out:target_file ()

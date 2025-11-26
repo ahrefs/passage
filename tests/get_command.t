@@ -133,7 +133,7 @@ Should fail - user is not authorised to view secret
   $ PASSAGE_IDENTITY=$UNAUTHORISED_USER.key passage get single_line_no_comments
   age: error: no identity matched any of the recipients
   age: report unexpected or unhelpful errors at https://filippo.io/age/report
-  E: failed to decrypt single_line_no_comments : Failure("age --decrypt --identity '$TESTCASE_ROOT/unauthorised.key' : exit code 1")
+  E: failed to decrypt single_line_no_comments: Failure("age --decrypt --identity '$TESTCASE_ROOT/unauthorised.key' : exit code 1")
   [1]
 
 Should succeed and display only secret without comments when using the -s for single line secret with comments
@@ -189,5 +189,5 @@ Should succeed - decrypting a secret by a member of a group
 
 Should fail gracefully - invalid setup
   $ PASSAGE_DIR=. passage get 03/secret1
-  E: 03/secret1 : Failure("secrets directory (./secrets) is not initialised. Is passage setup? Try 'passage init'.")
+  E: 03/secret1: Failure("secrets directory (./secrets) is not initialised. Is passage setup? Try 'passage init'.")
   [1]

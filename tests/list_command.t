@@ -204,5 +204,5 @@ Should fail - multi-level invalid path
 
 Should fail gracefully - invalid setup
   $ PASSAGE_DIR=. passage list 01
-  E: 01 : Failure("secrets directory (./secrets) is not initialised. Is passage setup? Try 'passage init'.")
+  E: 01: Failure("secrets directory (./secrets) is not initialised. Is passage setup? Try 'passage init'.")
   [1]

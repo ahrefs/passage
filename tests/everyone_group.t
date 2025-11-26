@@ -30,7 +30,7 @@ GET, CAT - should allow all the users to decrypt
   $ PASSAGE_IDENTITY=tommy.tom.key passage get 04/secret1
   (04/secret1) secret: single line
   $ PASSAGE_IDENTITY=user.with.missing.key passage get 04/secret1
-  E: failed to decrypt 04/secret1 : Failure("no identity file found (user.with.missing.key). Is passage setup? Try 'passage init'.")
+  E: failed to decrypt 04/secret1: Failure("no identity file found (user.with.missing.key). Is passage setup? Try 'passage init'.")
   [1]
 
 EDIT - should allow everyone to edit an existing secret
@@ -63,7 +63,7 @@ EDIT-WHO - should work as expected
   $ passage get 04/secret1
   age: error: no identity matched any of the recipients
   age: report unexpected or unhelpful errors at https://filippo.io/age/report
-  E: failed to decrypt 04/secret1 : Failure("age --decrypt --identity '$TESTCASE_ROOT/bobby.bob.key' : exit code 1")
+  E: failed to decrypt 04/secret1: Failure("age --decrypt --identity '$TESTCASE_ROOT/bobby.bob.key' : exit code 1")
   [1]
   $ PASSAGE_IDENTITY=robby.rob.key passage get 04/secret1
   BYE

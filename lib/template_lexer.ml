@@ -1,16 +1,9 @@
 open Sedlexing
-open Printf
 open Template_parser
 
 module Encoding = Utf8
 
 let lexeme = Encoding.lexeme
-
-let to_string token =
-  match token with
-  | TEXT s -> sprintf "TEXT(%S)" s
-  | IDEN s -> sprintf "IDEN(%S)" s
-  | EOF -> "EOF"
 
 let iden_letter = [%sedlex.regexp? 'a' .. 'z' | 'A' .. 'Z' | '_' | '-' | '/' | '.' | '0' .. '9']
 let iden_fragment = [%sedlex.regexp? iden_letter, Star iden_letter]
