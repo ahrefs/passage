@@ -25,7 +25,7 @@ let run_if_recipient ~op_string ~path ~f =
   | false -> error_not_recipient ~op_string path
   | true -> f ()
 
-let die_if_invariant_fails ~op_string path =
+let die_if_invariant_fails ?use_sudo ~op_string path =
   let open Storage.Secrets in
   (* If the secret's folder doesn't exist yet or is empty, there's no invariant to check, allow the operation *)
   let full_path = path |> Path.folder_of_path |> Path.abs in
@@ -41,7 +41,7 @@ let die_if_invariant_fails ~op_string path =
         List.exists
           (fun s ->
             try
-              let (_decrypted : string) = Util.Secret.decrypt_silently s in
+              let (_decrypted : string) = Util.Secret.decrypt_silently ?use_sudo s in
               false
             with _e ->
               let () =

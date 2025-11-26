@@ -22,7 +22,7 @@ module Recipients : sig
   val rewrite_recipients_file : ?use_sudo:bool -> Storage.Secret_name.t -> string list -> unit
   val add_recipients_to_secret : ?use_sudo:bool -> Storage.Secret_name.t -> string list -> unit
   val remove_recipients_from_secret : ?use_sudo:bool -> Storage.Secret_name.t -> string list -> unit
-  val list_recipient_secrets : ?verbose:bool -> string list -> unit
+  val list_recipient_secrets : ?use_sudo:bool -> ?verbose:bool -> string list -> unit
   val list_recipients : Path.t -> bool -> unit
 end
 
@@ -45,7 +45,7 @@ module Rm : sig
 end
 
 module Search : sig
-  val search_secrets : ?verbose:bool -> Re2.t -> Path.t -> unit
+  val search_secrets : ?verbose:bool -> ?use_sudo:bool -> Re2.t -> Path.t -> unit
 end
 
 module Show : sig
@@ -55,6 +55,7 @@ end
 module Edit : sig
   val show_recipients_notice_if_true : bool -> unit
   val edit_secret :
+    ?use_sudo:bool ->
     ?self_fallback:bool ->
     ?verbose:bool ->
     ?allow_retry:(plaintext:string -> secret_name:Storage.Secret_name.t -> Age.recipient list -> unit) ->
@@ -64,11 +65,11 @@ module Edit : sig
 end
 
 module Create : sig
-  val add : comments:string option -> Storage.Secret_name.t -> string -> unit
-  val bare : f:(Storage.Secret_name.t -> 'a) -> Storage.Secret_name.t -> 'a
+  val add : ?use_sudo:bool -> comments:string option -> Storage.Secret_name.t -> string -> unit
+  val bare : ?use_sudo:bool -> f:(Storage.Secret_name.t -> 'a) -> Storage.Secret_name.t -> 'a
 end
 
 module Replace : sig
   val replace_secret : Storage.Secret_name.t -> string -> unit
-  val replace_comment : Storage.Secret_name.t -> (string option -> string) -> unit
+  val replace_comment : ?use_sudo:bool -> Storage.Secret_name.t -> (string option -> string) -> unit
 end

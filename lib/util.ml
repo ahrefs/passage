@@ -42,8 +42,8 @@ end
 (** Secret helper utilities for common patterns *)
 module Secret = struct
   (** Decrypt and parse a secret in one operation *)
-  let decrypt_and_parse ?(silence_stderr = false) secret_name =
-    let plaintext = Storage.Secrets.decrypt_exn ~silence_stderr secret_name in
+  let decrypt_and_parse ?use_sudo ?(silence_stderr = false) secret_name =
+    let plaintext = Storage.Secrets.decrypt_exn ?use_sudo ~silence_stderr secret_name in
     Secret.Validation.parse_exn plaintext
 
   (** Reconstruct a secret from parsed secret and new comments *)
@@ -65,7 +65,7 @@ module Secret = struct
     | true -> ()
 
   (** Decrypt secret with silent stderr - common pattern *)
-  let decrypt_silently secret_name = Storage.Secrets.decrypt_exn ~silence_stderr:true secret_name
+  let decrypt_silently ?use_sudo secret_name = Storage.Secrets.decrypt_exn ?use_sudo ~silence_stderr:true secret_name
 
   (** Common recipient error messages *)
   let die_no_recipients_found path = die "E: no recipients found for %s" (show_path path)

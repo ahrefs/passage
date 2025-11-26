@@ -197,7 +197,7 @@ module Recipients = struct
           let removed_count = List.length current_recipients - List.length new_recipients in
           Devkit.eprintfn "I: removed %d recipient%s" removed_count (if removed_count = 1 then "" else "s")))
 
-  let list_recipient_secrets ?(verbose = false) recipients_names =
+  let list_recipient_secrets ?use_sudo ?(verbose = false) recipients_names =
     if recipients_names = [] then Util.die "E: Must specify at least one recipient name";
     let number_of_recipients = List.length recipients_names in
     let all_recipient_names = Storage.Keys.all_recipient_names () in
@@ -220,7 +220,7 @@ module Recipients = struct
             | false -> Printf.printf "%s\n" (show_name secret)
             | true ->
             try
-              let plaintext = Util.Secret.decrypt_silently secret in
+              let plaintext = Util.Secret.decrypt_silently ?use_sudo secret in
               Printf.printf "%s\n" (Secret.Validation.validity_to_string (show_name secret) plaintext)
             with _ -> Printf.printf "🚨 %s [ WARNING: failed to decrypt ]\n" (show_name secret)
           in
@@ -380,12 +380,12 @@ module Rm = struct
 end
 
 module Search = struct
-  let search_secrets ?(verbose = false) pattern path =
+  let search_secrets ?(verbose = false) ?use_sudo pattern path =
     let secrets = Storage.Secrets.get_secrets_tree path |> List.sort Storage.Secret_name.compare in
     let n_skipped, n_failed, n_matched, matched_secrets =
       List.fold_left
         (fun (n_skipped, n_failed, n_matched, matched_secrets) secret ->
-          match Storage.Secrets.search secret pattern with
+          match Storage.Secrets.search ?use_sudo secret pattern with
           | Succeeded true -> n_skipped, n_failed, n_matched + 1, secret :: matched_secrets
           | Succeeded false -> n_skipped, n_failed, n_matched, matched_secrets
           | Skipped ->
@@ -427,13 +427,13 @@ If the secret is a staging secret, its only recipient should be @everyone.
 
   let show_recipients_notice_if_true cond = if cond then prerr_endline new_secret_recipients_notice
 
-  let edit_secret ?(self_fallback = false) ?(verbose = false) ?allow_retry ~get_updated_secret secret_name =
+  let edit_secret ?use_sudo ?(self_fallback = false) ?(verbose = false) ?allow_retry ~get_updated_secret secret_name =
     let secret_name_str = show_name secret_name in
     let original_secret =
       match Storage.Secrets.secret_exists secret_name with
       | false -> None
       | true ->
-      try Devkit.some @@ Storage.Secrets.decrypt_exn secret_name
+      try Devkit.some @@ Storage.Secrets.decrypt_exn ?use_sudo secret_name
       with exn -> Util.die ~exn "E: failed to decrypt %s" secret_name_str
     in
     try
@@ -447,7 +447,7 @@ If the secret is a staging secret, its only recipient should be @everyone.
         let secret_recipients' = Storage.Secrets.get_recipients_from_path_exn secret_path in
         let secret_recipients =
           if secret_recipients' = [] && self_fallback then (
-            let own_recipients = Storage.Secrets.recipients_of_own_id () in
+            let own_recipients = Storage.Secrets.recipients_of_own_id ?use_sudo:None () in
             let () = Recipients.add_recipients_if_none_exists own_recipients secret_path in
             Storage.Secrets.get_recipients_from_path_exn secret_path)
           else secret_recipients'
@@ -462,22 +462,22 @@ If the secret is a staging secret, its only recipient should be @everyone.
           | None ->
           try
             show_recipients_notice_if_true is_first_secret_in_new_folder;
-            Storage.Secrets.encrypt_exn ~verbose ~plaintext:updated_secret ~secret_name secret_recipients
+            Storage.Secrets.encrypt_exn ?use_sudo ~verbose ~plaintext:updated_secret ~secret_name secret_recipients
           with exn -> Util.die ~exn "E: encrypting %s failed" secret_name_str)
     with Failure s -> Util.die "%s" s
 end
 
 module Create = struct
-  let base_check secret_name =
+  let base_check ?use_sudo secret_name =
     match Storage.Secrets.secret_exists secret_name with
     | true -> Util.die "E: refusing to create: a secret by that name already exists"
     | false ->
       let path = Storage.Secrets.(to_path secret_name) in
-      Invariant.die_if_invariant_fails ~op_string:"create" path
+      Invariant.die_if_invariant_fails ?use_sudo ~op_string:"create" path
 
-  let add ~comments secret_name secret_text =
-    base_check secret_name;
-    Edit.edit_secret secret_name ~self_fallback:true ~get_updated_secret:(fun _ ->
+  let add ?use_sudo ~comments secret_name secret_text =
+    base_check ?use_sudo secret_name;
+    Edit.edit_secret ?use_sudo secret_name ~self_fallback:true ~get_updated_secret:(fun _ ->
         let parsed_secret = Secret.Validation.parse_exn secret_text in
         let comments =
           match comments, parsed_secret.comments with
@@ -492,8 +492,8 @@ module Create = struct
         | Error e -> Util.die "E: invalid comment format: %s" e
         | Ok comments -> Ok (Util.Secret.reconstruct_secret ~comments parsed_secret))
 
-  let bare ~f secret_name =
-    base_check secret_name;
+  let bare ?use_sudo ~f secret_name =
+    base_check ?use_sudo secret_name;
     f secret_name
 end
 
@@ -537,7 +537,7 @@ module Replace = struct
         try Storage.Secrets.encrypt_exn ~verbose:false ~plaintext:updated_secret ~secret_name recipients
         with exn -> Util.die ~exn "E: encrypting %s failed" (show_name secret_name))
 
-  let replace_comment secret_name get_new_comments =
+  let replace_comment ?use_sudo secret_name get_new_comments =
     let secret_name_str = show_name secret_name in
     let recipients = Util.Recipients.get_recipients_or_die secret_name in
     Invariant.run_if_recipient ~op_string:"replace comments"
@@ -547,7 +547,7 @@ module Replace = struct
         | false -> Util.die "E: no such secret: %s" secret_name_str
         | true ->
           let original_secret =
-            try Util.Secret.decrypt_and_parse ~silence_stderr:true secret_name
+            try Util.Secret.decrypt_and_parse ?use_sudo ~silence_stderr:true secret_name
             with _e ->
               Util.die
                 "E: unable to parse secret %s's format. Please fix it before replacing the comments,or use the edit \
@@ -556,6 +556,6 @@ module Replace = struct
           in
           let new_comments = get_new_comments original_secret.comments in
           let updated_secret = Util.Secret.reconstruct_secret ~comments:new_comments original_secret in
-          (try Storage.Secrets.encrypt_exn ~verbose:false ~plaintext:updated_secret ~secret_name recipients
+          (try Storage.Secrets.encrypt_exn ?use_sudo ~verbose:false ~plaintext:updated_secret ~secret_name recipients
            with exn -> Util.die ~exn "E: encrypting %s failed" secret_name_str))
 end

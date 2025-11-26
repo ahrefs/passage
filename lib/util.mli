@@ -10,11 +10,11 @@ module Recipients : sig
 end
 
 module Secret : sig
-  val decrypt_and_parse : ?silence_stderr:bool -> Storage.Secret_name.t -> Secret.t
+  val decrypt_and_parse : ?use_sudo:bool -> ?silence_stderr:bool -> Storage.Secret_name.t -> Secret.t
   val reconstruct_secret : ?comments:string -> Secret.t -> string
   val check_exists_or_die : Storage.Secret_name.t -> unit
   val check_path_exists_or_die : Storage.Secret_name.t -> Path.t -> unit
-  val decrypt_silently : Storage.Secret_name.t -> string
+  val decrypt_silently : ?use_sudo:bool -> Storage.Secret_name.t -> string
   val die_no_recipients_found : Path.t -> 'a
   val die_failed_get_recipients : ?exn:exn -> string -> 'a
   val reconstruct_with_new_text : is_singleline:bool -> new_text:string -> existing_comments:string option -> string
