@@ -1,6 +1,6 @@
 available: os != "win32"
 x-ci-accept-failures: [
-  "alpine-3.20"
+  "alpine-3.22"
   "archlinux"
   "debian-11"
   "fedora-39"
