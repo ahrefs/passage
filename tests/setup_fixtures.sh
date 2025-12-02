@@ -21,7 +21,7 @@ check_age_file_format() {
   else echo "FAIL: age file does not starts with expected $begin_header"
   fi
 
-  if [ "$(grep -c --fixed-strings -- "$begin_header" "$file")" -eq 1 ]
+  if [ "$(grep -c -- "$begin_header" "$file")" -eq 1 ]
   then echo "OK: age file only has 1 occurrence of $begin_header"
   else echo "FAIL: age file has multiple occurrence of $begin_header"
   fi
@@ -33,7 +33,7 @@ check_age_file_format() {
     echo "FAIL: age file does not ends with expected $end_header"
   fi
 
-  if [ "$(grep -c --fixed-strings -- "$end_header" "$file")" -eq 1 ]
+  if [ "$(grep -c -- "$end_header" "$file")" -eq 1 ]
   then echo "OK: age file only has 1 occurrence of $end_header"
   else echo "FAIL: age file has multiple occurrence of $end_header"
   fi

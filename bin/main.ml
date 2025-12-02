@@ -483,7 +483,7 @@ module New = struct
     with Failure s -> Shell.die "%s" s
 
   let new_ =
-    let doc = "interactive creation of a new single-line secret" in
+    let doc = "interactive creation of a new secret" in
     let info = Cmd.info "new" ~doc in
     let term = Term.(const create_new_secret $ Flags.secret_name) in
     Cmd.v info term
