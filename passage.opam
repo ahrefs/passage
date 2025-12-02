@@ -42,6 +42,7 @@ build: [
 ]
 dev-repo: "git+https://github.com/ahrefs/passage.git"
 available: os != "win32" & os != "macos"
+x-maintenance-intent: ["(latest)"]
 x-ci-accept-failures: [
   "alpine-3.22"
   "centos-9"

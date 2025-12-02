@@ -1,3 +1,6 @@
+## Unreleased
+- Add `x-maintenance-intent` policy
+
 ## 0.3.0 (2025-12-02)
 - Refactor passage to be lib-first. Commands and utility functions are now available for usage by lib users
 - Update os availability in opam. Not available in macos anymore.
