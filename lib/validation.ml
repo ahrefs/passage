@@ -1,5 +1,4 @@
 (** Unified validation functions for secrets, comments, and recipients *)
-
 open Printf
 
 (** Validate secret format using Secret.Validation module *)

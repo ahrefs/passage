@@ -1,3 +1,4 @@
+open Passage
 open Validation
 open Prompt
 
@@ -8,7 +9,7 @@ let get_comments_from_stdin ?help_message () =
   | Error e -> Shell.die "E: %s" e
 
 let get_comments_from_editor ?(initial = "") () =
-  match Util.Editor.edit_with_validation ~initial ~validate:validate_comments () with
+  match Editor.edit_with_validation ~initial ~validate:validate_comments () with
   | Ok c -> c
   | Error e -> Shell.die "E: %s" e
 

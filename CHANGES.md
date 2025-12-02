@@ -1,3 +1,7 @@
+## Unreleased
+- Refactor passage to be lib-first. Commands and utility functions are now available for usage by lib users
+- Update os availability in opam. Not available in macos anymore.
+
 ## 0.2.0 (2025-11-26)
 - Update refresh command to handle users and groups via the @<user_or_group> target syntax
 - Add --version flag to passage command

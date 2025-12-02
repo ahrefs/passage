@@ -1,5 +1,3 @@
-let die ~op_string = Shell.die "E: refusing to %s: violates invariant" op_string
-
 let get_expanded_recipient_names_from_folder path =
   try
     let recipients = Storage.Secrets.get_recipients_from_path_exn path in
@@ -14,7 +12,7 @@ let error_not_recipient ~op_string path =
   in
   let expanded_recipients = get_expanded_recipient_names_from_folder base_folder in
   let () = List.iter (Printf.eprintf "  %s\n") expanded_recipients in
-  die ~op_string
+  Util.die "E: refusing to %s: violates invariant" op_string
 
 let user_is_listed_as_recipient path =
   let open Storage.Secrets in
@@ -27,7 +25,7 @@ let run_if_recipient ~op_string ~path ~f =
   | false -> error_not_recipient ~op_string path
   | true -> f ()
 
-let die_if_invariant_fails ~op_string path =
+let die_if_invariant_fails ?use_sudo ~op_string path =
   let open Storage.Secrets in
   (* If the secret's folder doesn't exist yet or is empty, there's no invariant to check, allow the operation *)
   let full_path = path |> Path.folder_of_path |> Path.abs in
@@ -43,7 +41,7 @@ let die_if_invariant_fails ~op_string path =
         List.exists
           (fun s ->
             try
-              let (_decrypted : string) = Util.Secret.decrypt_silently s in
+              let (_decrypted : string) = Util.Secret.decrypt_silently ?use_sudo s in
               false
             with _e ->
               let () =
@@ -56,4 +54,4 @@ let die_if_invariant_fails ~op_string path =
               true)
           (get_secrets_in_folder base_folder)
       in
-      if fails_invariant then die ~op_string else ())
+      if fails_invariant then Util.die "E: refusing to %s: violates invariant" op_string else ())

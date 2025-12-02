@@ -35,6 +35,6 @@ let build_rel_path rel_path =
   | None -> inject "."
   | Some p -> inject @@ Fpath.to_string p
 
-let abs path = concat (inject (Lazy.force Config.secrets_dir)) (build_rel_path (project path))
+let abs path = concat (inject (Lazy.force !Config.secrets_dir)) (build_rel_path (project path))
 
 let folder_of_path path = if is_directory (abs path) then path else dirname path

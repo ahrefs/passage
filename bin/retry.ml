@@ -1,4 +1,5 @@
 (** Retry utilities for operations that may fail *)
+open Passage
 
 (** Generic retry function for any operation *)
 let rec retry_with_prompt ~operation ~error_message ~prompt_message =
