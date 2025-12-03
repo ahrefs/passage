@@ -346,13 +346,49 @@ module Healthcheck = struct
     in
     Arg.(value & vflag NoUpgrade upgrade_mode)
 
+  let print_install () =
+    let () =
+      prerr_endline
+        {|
+==========================================================================
+Checking passage installation
+==========================================================================|}
+    in
+    let id_from_env = Sys.getenv_opt "PASSAGE_IDENTITY" in
+    let identity_path =
+      match id_from_env with
+      | Some path -> path
+      | None ->
+        let base_dir = Lazy.force !Config.base_dir in
+        Filename.concat base_dir "identity.key"
+    in
+    match Sys.file_exists identity_path with
+    | false ->
+      prerr_endline "\n❌ ERROR: Passage is not set up";
+      Shell.die "\nPassage identity file not found. Please run 'passage init' to set up passage."
+    | true ->
+    try
+      prerr_endline "\n✅ Passage is configured";
+      let own_key_str = Age.Key.project (Age.Key.from_identity_file identity_path) in
+      let recipients = Storage.Secrets.recipients_of_own_id () in
+      (match recipients with
+      | [] -> prerr_endline "\n⚠️  WARNING: No registered recipient names found for your identity"
+      | _ ->
+        prerr_endline "\nRegistered recipient name(s):";
+        List.iter (fun (r : Age.recipient) -> Devkit.eprintfn "  - %s\n" r.name) recipients);
+      (match id_from_env with
+      | Some _ -> Devkit.eprintfn "Identity key path: %s (from PASSAGE_IDENTITY environment variable)\n" identity_path
+      | None -> Devkit.eprintfn "Identity key path: %s\n" identity_path);
+
+      Devkit.eprintfn "Public key: %s" own_key_str
+    with exn ->
+      prerr_endline "\n❌ ERROR: Failed to read passage installation\n";
+      Shell.die "Reason: %s" (Printexc.to_string exn)
+
   let check_folders_without_keys_file () =
     let () =
       prerr_endline
         {|
-
-PASSAGE HEALTHCHECK. Diagnose for common problems
-
 ==========================================================================
 Checking for folders without .keys file
 ==========================================================================|}
@@ -376,57 +412,66 @@ Checking for validity of own secrets. Use -v flag to break down per secret
 ==========================================================================
 |}
     in
-    let recipients_of_own_id = Secrets.recipients_of_own_id () in
-    List.iter
-      (fun (recipient : Age.recipient) ->
-        match Secrets.get_secrets_for_recipient recipient.name with
-        | [] -> Printf.eprintf "No secrets found for %s" recipient.name
-        | secrets ->
-          let sorted_secrets = List.sort Secret_name.compare secrets in
-          let ok, invalid, fail =
-            List.fold_left
-              (fun (ok, invalid, fail) secret_name ->
-                try
-                  let secret_text = Secrets.decrypt_exn ~silence_stderr:true secret_name in
-                  match Secret.Validation.validate secret_text with
-                  | Ok kind ->
-                    let () =
-                      verbose_eprintlf ~verbose "✅ %s [ valid %s ]" (show_name secret_name) (Secret.kind_to_string kind)
-                    in
-                    succ ok, invalid, fail
-                  | Error (e, validation_error_type) ->
-                    healthcheck_with_errors := true;
-                    let () = Printf.eprintf "❌ %s [ invalid format: %s ]\n" (show_name secret_name) e in
-                    let upgraded_secrets =
-                      match upgrade_mode, validation_error_type with
-                      | Upgrade, SingleLineLegacy ->
-                        (try
-                           let parsed_secret = Secret.Validation.parse_exn secret_text in
-                           let upgraded_secret = reconstruct_secret ?comments:parsed_secret.comments parsed_secret in
-                           let recipients = Util.Recipients.get_recipients_or_die secret_name in
-                           Storage.Secrets.encrypt_exn ~verbose:false ~plaintext:upgraded_secret ~secret_name recipients;
-                           Devkit.eprintfn "I: updated %s" (show_name secret_name);
-                           1
-                         with exn ->
-                           Printf.eprintf "E: encrypting %s failed: %s\n" (show_name secret_name)
-                             (Printexc.to_string exn);
-                           0)
-                      | DryRun, SingleLineLegacy ->
-                        Devkit.eprintfn "I: would update %s" (show_name secret_name);
-                        1
-                      | NoUpgrade, _ | Upgrade, _ | DryRun, _ -> 0
-                    in
-                    ok + upgraded_secrets, succ (invalid - upgraded_secrets), fail
-                with _ ->
-                  let () = Printf.eprintf "🚨 %s [ WARNING: failed to decrypt ]\n" (show_name secret_name) in
-                  ok, invalid, succ fail)
-              (0, 0, 0) sorted_secrets
-          in
-          let () = Printf.eprintf "\nI: %i valid secrets, %i invalid and %i with decryption issues\n" ok invalid fail in
-          ())
-      recipients_of_own_id
+    match Secrets.recipients_of_own_id () with
+    | [] -> prerr_endline "⚠️  Not a recipient of any secrets"
+    | recipients_of_own_id ->
+      List.iter
+        (fun (recipient : Age.recipient) ->
+          match Secrets.get_secrets_for_recipient recipient.name with
+          | [] -> Printf.eprintf "No secrets found for %s" recipient.name
+          | secrets ->
+            let sorted_secrets = List.sort Secret_name.compare secrets in
+            let ok, invalid, fail =
+              List.fold_left
+                (fun (ok, invalid, fail) secret_name ->
+                  try
+                    let secret_text = Secrets.decrypt_exn ~silence_stderr:true secret_name in
+                    match Secret.Validation.validate secret_text with
+                    | Ok kind ->
+                      let () =
+                        verbose_eprintlf ~verbose "✅ %s [ valid %s ]" (show_name secret_name)
+                          (Secret.kind_to_string kind)
+                      in
+                      succ ok, invalid, fail
+                    | Error (e, validation_error_type) ->
+                      healthcheck_with_errors := true;
+                      let () = Printf.eprintf "❌ %s [ invalid format: %s ]\n" (show_name secret_name) e in
+                      let upgraded_secrets =
+                        match upgrade_mode, validation_error_type with
+                        | Upgrade, SingleLineLegacy ->
+                          (try
+                             let parsed_secret = Secret.Validation.parse_exn secret_text in
+                             let upgraded_secret = reconstruct_secret ?comments:parsed_secret.comments parsed_secret in
+                             let recipients = Util.Recipients.get_recipients_or_die secret_name in
+                             Storage.Secrets.encrypt_exn ~verbose:false ~plaintext:upgraded_secret ~secret_name
+                               recipients;
+                             Devkit.eprintfn "I: updated %s" (show_name secret_name);
+                             1
+                           with exn ->
+                             Printf.eprintf "E: encrypting %s failed: %s\n" (show_name secret_name)
+                               (Printexc.to_string exn);
+                             0)
+                        | DryRun, SingleLineLegacy ->
+                          Devkit.eprintfn "I: would update %s" (show_name secret_name);
+                          1
+                        | NoUpgrade, _ | Upgrade, _ | DryRun, _ -> 0
+                      in
+                      ok + upgraded_secrets, succ (invalid - upgraded_secrets), fail
+                  with _ ->
+                    let () = Printf.eprintf "🚨 %s [ WARNING: failed to decrypt ]\n" (show_name secret_name) in
+                    ok, invalid, succ fail)
+                (0, 0, 0) sorted_secrets
+            in
+            let () =
+              Printf.eprintf "\nI: %i valid secrets, %i invalid and %i with decryption issues\n" ok invalid fail
+            in
+            ())
+        recipients_of_own_id
 
   let healthcheck verbose upgrade_mode =
+    let () = prerr_endline {|
+PASSAGE HEALTHCHECK. Diagnose for common problems|} in
+    let () = print_install () in
     let () = check_folders_without_keys_file () in
     let () = check_own_secrets_validity verbose upgrade_mode in
     match !healthcheck_with_errors with

@@ -1,10 +1,68 @@
-  $ . ./setup_fixtures.sh
-
-Should pass basic healthcheck with valid secrets
-  $ passage healthcheck  
-  
+Should fail if passage is not configured, and show a message to run passage init
+  $ PASSAGE_IDENTITY="" passage healthcheck
   
   PASSAGE HEALTHCHECK. Diagnose for common problems
+  
+  ==========================================================================
+  Checking passage installation
+  ==========================================================================
+  
+  ❌ ERROR: Passage is not set up
+  
+  Passage identity file not found. Please run 'passage init' to set up passage.
+  [1]
+
+Setup fixtures.
+Tests will show the "from PASSAGE_IDENTITY environment variable" text
+because PASSAGE_IDENTITY is exported in the fixtures setup script.
+  $ . ./setup_fixtures.sh
+
+Should show a warning if identity is not a recipient of any secrets
+  $ age-keygen > "not_a_recipient.key" 2> /dev/null
+  $ PASSAGE_IDENTITY="not_a_recipient.key" passage healthcheck 2>&1 | sed 's/Public key:.*$/Public key:/'
+  
+  PASSAGE HEALTHCHECK. Diagnose for common problems
+  
+  ==========================================================================
+  Checking passage installation
+  ==========================================================================
+  
+  ✅ Passage is configured
+  
+  ⚠️  WARNING: No registered recipient names found for your identity
+  Identity key path: not_a_recipient.key (from PASSAGE_IDENTITY environment variable)
+  
+  Public key:
+  
+  ==========================================================================
+  Checking for folders without .keys file
+  ==========================================================================
+  
+  SUCCESS: secrets all have .keys in the immediate directory
+  
+  ==========================================================================
+  Checking for validity of own secrets. Use -v flag to break down per secret
+  ==========================================================================
+  
+  ⚠️  Not a recipient of any secrets
+
+Should pass basic healthcheck with valid secrets
+  $ passage healthcheck 2>&1 | sed 's/Public key:.*$/Public key:/'
+  
+  PASSAGE HEALTHCHECK. Diagnose for common problems
+  
+  ==========================================================================
+  Checking passage installation
+  ==========================================================================
+  
+  ✅ Passage is configured
+  
+  Registered recipient name(s):
+    - bobby.bob
+  
+  Identity key path: bobby.bob.key (from PASSAGE_IDENTITY environment variable)
+  
+  Public key:
   
   ==========================================================================
   Checking for folders without .keys file
@@ -37,10 +95,22 @@ Setup folder without .keys file
   If the secret is a staging secret, its only recipient should be @everyone.
   
   $ rm "$PASSAGE_DIR/secrets/bad_folder/.keys"
-  $ passage healthcheck
-  
+  $ passage healthcheck 2>&1 | sed 's/Public key:.*$/Public key:/'
   
   PASSAGE HEALTHCHECK. Diagnose for common problems
+  
+  ==========================================================================
+  Checking passage installation
+  ==========================================================================
+  
+  ✅ Passage is configured
+  
+  Registered recipient name(s):
+    - bobby.bob
+  
+  Identity key path: bobby.bob.key (from PASSAGE_IDENTITY environment variable)
+  
+  Public key:
   
   ==========================================================================
   Checking for folders without .keys file
@@ -55,14 +125,24 @@ Setup folder without .keys file
   
   
   I: 5 valid secrets, 0 invalid and 0 with decryption issues
-  [1]
-
 
 Should support verbose mode showing individual secret validation
-  $ passage healthcheck -v
-  
+  $ passage healthcheck -v 2>&1 | sed 's/Public key:.*$/Public key:/'
   
   PASSAGE HEALTHCHECK. Diagnose for common problems
+  
+  ==========================================================================
+  Checking passage installation
+  ==========================================================================
+  
+  ✅ Passage is configured
+  
+  Registered recipient name(s):
+    - bobby.bob
+  
+  Identity key path: bobby.bob.key (from PASSAGE_IDENTITY environment variable)
+  
+  Public key:
   
   ==========================================================================
   Checking for folders without .keys file
@@ -82,14 +162,24 @@ Should support verbose mode showing individual secret validation
   ✅ 04/secret1 [ valid single-line ]
   
   I: 5 valid secrets, 0 invalid and 0 with decryption issues
-  [1]
-
 
 Should support dry-run upgrade mode for legacy secrets
-  $ passage healthcheck --dry-run-upgrade-legacy-secrets
-  
+  $ passage healthcheck --dry-run-upgrade-legacy-secrets 2>&1 | sed 's/Public key:.*$/Public key:/'
   
   PASSAGE HEALTHCHECK. Diagnose for common problems
+  
+  ==========================================================================
+  Checking passage installation
+  ==========================================================================
+  
+  ✅ Passage is configured
+  
+  Registered recipient name(s):
+    - bobby.bob
+  
+  Identity key path: bobby.bob.key (from PASSAGE_IDENTITY environment variable)
+  
+  Public key:
   
   ==========================================================================
   Checking for folders without .keys file
@@ -104,6 +194,3 @@ Should support dry-run upgrade mode for legacy secrets
   
   
   I: 5 valid secrets, 0 invalid and 0 with decryption issues
-  [1]
-
-
