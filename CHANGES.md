@@ -1,4 +1,5 @@
 ## Unreleased
+- Add installion state on `passage healthcheck command`
 - Add `x-maintenance-intent` policy
 
 ## 0.3.0 (2025-12-02)
