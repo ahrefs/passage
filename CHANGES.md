@@ -1,4 +1,4 @@
-## Unreleased
+## 0.3.1 (2025-12-04)
 - Add installion state on `passage healthcheck command`
 - Add `x-maintenance-intent` policy
 - Add centos 10 to opam ci exclusions
