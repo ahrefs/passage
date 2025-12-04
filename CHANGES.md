@@ -1,6 +1,7 @@
 ## Unreleased
 - Add installion state on `passage healthcheck command`
 - Add `x-maintenance-intent` policy
+- Add centos 10 to opam ci exclusions
 
 ## 0.3.0 (2025-12-02)
 - Refactor passage to be lib-first. Commands and utility functions are now available for usage by lib users

@@ -3,6 +3,7 @@ x-maintenance-intent: ["(latest)"]
 x-ci-accept-failures: [
   "alpine-3.22"
   "centos-9"
+  "centos-10"
   "archlinux"
   "debian-11"
   "fedora-41"
