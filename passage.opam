@@ -10,7 +10,7 @@ homepage: "https://github.com/ahrefs/passage"
 bug-reports: "https://github.com/ahrefs/passage/issues"
 depends: [
   "bos"
-  "cmdliner" {< "2.0.0"}
+  "cmdliner"
   "ocaml" {>= "4.14"}
   "conf-age"
   "dune" {>= "3.9"}
