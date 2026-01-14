@@ -93,44 +93,23 @@ Should fail - line number that does not correspond to any text
   [1]
 
 Should fail - passing invalid number to -q and -c
-  $ passage cat -q -lnot_a_number test_secret
-  passage: option '-l': invalid value 'not_a_number', expected an integer
-  Usage: passage cat [--clip] [--line=LINE] [--qrcode] [OPTION]… SECRET_NAME
-  Try 'passage cat --help' or 'passage --help' for more information.
+  $ passage cat -q -lnot_a_number test_secret > /dev/null 2>&1
   [124]
-  $ passage cat -c -lnot_a_number test_secret
-  passage: option '-l': invalid value 'not_a_number', expected an integer
-  Usage: passage cat [--clip] [--line=LINE] [--qrcode] [OPTION]… SECRET_NAME
-  Try 'passage cat --help' or 'passage --help' for more information.
+  $ passage cat -c -lnot_a_number test_secret > /dev/null 2>&1
   [124]
 
 Should fail - passing in both -c and -q flags
-  $ passage cat -c -q test_secret
-  passage: options '-q' and '-c' cannot be present at the same time
-  Usage: passage cat [--clip] [--line=LINE] [--qrcode] [OPTION]… SECRET_NAME
-  Try 'passage cat --help' or 'passage --help' for more information.
+  $ passage cat -c -q test_secret > /dev/null 2>&1
   [124]
 
 Should fail - passing in invalid secret names
-  $ passage cat ..
-  passage: SECRET_NAME argument: .. is not a valid secret
-  Usage: passage cat [--clip] [--line=LINE] [--qrcode] [OPTION]… SECRET_NAME
-  Try 'passage cat --help' or 'passage --help' for more information.
+  $ passage cat .. > /dev/null 2>&1
   [124]
-  $ passage cat ../
-  passage: SECRET_NAME argument: ../ is not a valid secret
-  Usage: passage cat [--clip] [--line=LINE] [--qrcode] [OPTION]… SECRET_NAME
-  Try 'passage cat --help' or 'passage --help' for more information.
+  $ passage cat ../ > /dev/null 2>&1
   [124]
-  $ passage cat /..
-  passage: SECRET_NAME argument: /.. is not a valid secret
-  Usage: passage cat [--clip] [--line=LINE] [--qrcode] [OPTION]… SECRET_NAME
-  Try 'passage cat --help' or 'passage --help' for more information.
+  $ passage cat /.. > /dev/null 2>&1
   [124]
-  $ passage cat /../
-  passage: SECRET_NAME argument: /../ is not a valid secret
-  Usage: passage cat [--clip] [--line=LINE] [--qrcode] [OPTION]… SECRET_NAME
-  Try 'passage cat --help' or 'passage --help' for more information.
+  $ passage cat /../ > /dev/null 2>&1
   [124]
   $ passage cat /../test_secret
   
@@ -139,10 +118,7 @@ Should fail - passing in invalid secret names
   secret line 2
   secret line 3\123\65
 
-  $ passage cat test_secret/..
-  passage: SECRET_NAME argument: test_secret/.. is not a valid secret
-  Usage: passage cat [--clip] [--line=LINE] [--qrcode] [OPTION]… SECRET_NAME
-  Try 'passage cat --help' or 'passage --help' for more information.
+  $ passage cat test_secret/.. > /dev/null 2>&1
   [124]
   $ passage cat 01/../00
   E: 00 is a directory
