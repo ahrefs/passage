@@ -33,7 +33,8 @@
   fpath
   (menhir
    (>= 20231231))
-  ppx_expect
+  (ppx_expect
+    :with-test)
   (ocamlformat
    (and
     :with-dev-setup

@@ -17,7 +17,7 @@ depends: [
   "fileutils"
   "fpath"
   "menhir" {>= "20231231"}
-  "ppx_expect"
+  "ppx_expect" {with-test}
   "ocamlformat" {with-dev-setup & = "0.26.2"}
   "qrc"
   "re"
