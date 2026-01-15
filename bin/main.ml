@@ -34,9 +34,11 @@ module Converters = struct
 
   let pattern_arg =
     let parse pattern =
-      try Ok (Re2.create_exn pattern) with Re2.Exceptions.Regex_compile_failed s -> Error (`Msg s)
+      try Ok (pattern, Re.Perl.compile_pat pattern) with
+      | Re.Perl.Parse_error -> Error (`Msg (Printf.sprintf "invalid regex pattern: %s" pattern))
+      | Re.Perl.Not_supported -> Error (`Msg (Printf.sprintf "regex pattern not supported: %s" pattern))
     in
-    let print ppf pattern = Format.fprintf ppf "%s" (Re2.to_string pattern) in
+    let print ppf (pattern, _) = Format.fprintf ppf "%s" pattern in
     Arg.conv (parse, print)
 end
 
@@ -634,7 +636,9 @@ module Search = struct
     let term =
       Term.(
         const (fun verbose pattern secrets_path ->
-            try Commands.Search.search_secrets ~verbose pattern secrets_path with Failure s -> Shell.die "%s" s)
+            let _, compiled_pattern = pattern in
+            try Commands.Search.search_secrets ~verbose compiled_pattern secrets_path
+            with Failure s -> Shell.die "%s" s)
         $ Flags.verbose
         $ pattern
         $ secrets_path)

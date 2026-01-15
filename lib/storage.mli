@@ -47,6 +47,6 @@ module Secrets : sig
   val decrypt_exn : ?use_sudo:bool -> ?silence_stderr:bool -> Secret_name.t -> string
   val refresh : ?use_sudo:bool -> verbose:bool -> ?force:bool -> Secret_name.t list -> unit
   val rm : is_directory:bool -> Path.t -> unit outcome
-  val search : ?use_sudo:bool -> Secret_name.t -> Re2.t -> bool outcome
+  val search : ?use_sudo:bool -> Secret_name.t -> Re.re -> bool outcome
   val recipients_of_own_id : ?use_sudo:bool -> unit -> Age.recipient list
 end

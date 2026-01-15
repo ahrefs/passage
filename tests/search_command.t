@@ -34,12 +34,12 @@ Regex specified as pattern  - should list all multiline secrets
 
 Invalid regex specified as pattern
   $ passage search "["
-  passage: PATTERN argument: missing ]: [
+  passage: PATTERN argument: invalid regex pattern: [
   Usage: passage search [--verbose] [OPTION]… PATTERN [PATH]
   Try 'passage search --help' or 'passage --help' for more information.
   [124]
   $ passage search "**"
-  passage: PATTERN argument: no argument for repetition operator: *
+  passage: PATTERN argument: invalid regex pattern: **
   Usage: passage search [--verbose] [OPTION]… PATTERN [PATH]
   Try 'passage search --help' or 'passage --help' for more information.
   [124]

@@ -45,7 +45,7 @@ module Rm : sig
 end
 
 module Search : sig
-  val search_secrets : ?verbose:bool -> ?use_sudo:bool -> Re2.t -> Path.t -> unit
+  val search_secrets : ?verbose:bool -> ?use_sudo:bool -> Re.re -> Path.t -> unit
 end
 
 module Show : sig
