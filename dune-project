@@ -29,7 +29,6 @@
    (>= 4.14))
   conf-age
   dune
-  extunix
   fileutils
   fpath
   (menhir
