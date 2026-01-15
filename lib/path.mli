@@ -1,10 +1,9 @@
 type t
-val inject : string -> t
+
 val project : t -> string
+val inject : string -> t
 val inject_list : string list -> t list
-val project_list : t list -> string list
-val compare : t -> t -> int
-val equal : t -> t -> bool
+
 val is_directory : t -> bool
 val file_exists : t -> bool
 val of_fpath : Fpath.t -> t

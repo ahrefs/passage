@@ -1,10 +1,28 @@
 open Printf
 
-module Action = Devkit.Action
-module Stre = Devkit.Stre
+(** Read lines from a config file, filtering out comments and empty lines *)
+let config_lines filename =
+  if not (Sys.file_exists filename) then []
+  else
+    In_channel.with_open_text filename (fun ic ->
+        let rec read_lines acc =
+          match In_channel.input_line ic with
+          | None -> List.rev acc
+          | Some line -> read_lines (line :: acc)
+        in
+        read_lines []
+        |> List.filter_map (fun line ->
+               let trimmed = String.trim line in
+               if trimmed = "" || String.starts_with ~prefix:"#" trimmed then None else Some trimmed))
 
 module Secret_name = struct
-  include Devkit.Fresh (String) ()
+  type t = string
+
+  let inject x = x
+  let project x = x
+  let compare = String.compare
+  let equal = String.equal
+
   let norm_secret secret = project secret |> Path.build_rel_path |> Path.project |> inject
 end
 
@@ -20,7 +38,7 @@ module Keys = struct
   let get_keys key_file =
     match Path.file_exists key_file with
     | false -> []
-    | true -> Action.config_lines (Path.project key_file) |> Age.Key.inject_list
+    | true -> config_lines (Path.project key_file) |> Age.Key.inject_list
 
   let keys_of_recipient (name : string) = get_keys @@ key_file_of_recipient_name name
 
@@ -28,7 +46,7 @@ module Keys = struct
     FileUtil.find ~follow:Follow (Has_extension ext) (get_keys_dir ())
       (fun acc f ->
         let name = FilePath.make_relative (get_keys_dir ()) f in
-        let name = Stre.drop_suffix name ("." ^ ext) in
+        let name = Filename.chop_suffix name ("." ^ ext) in
         name :: acc)
       []
     |> List.sort String.compare
@@ -46,7 +64,8 @@ module Secrets = struct
 
   let keys_ext = ".keys"
 
-  let verbose_eprintlf ?(verbose = false) fmt = if verbose then Devkit.eprintfn fmt else ksprintf (Fun.const ()) fmt
+  let verbose_eprintlf ?(verbose = false) fmt =
+    if verbose then Printf.ksprintf (fun s -> Printf.eprintf "%s\n" s) fmt else Printf.ksprintf (fun _ -> ()) fmt
 
   let to_path secret = secret |> Secret_name.norm_secret |> Secret_name.project |> Path.inject
 
@@ -54,7 +73,9 @@ module Secrets = struct
 
   let name_of_file file =
     let fname = Path.project file in
-    Stre.after fname (get_secrets_dir () ^ Filename.dir_sep) |> FilePath.chop_extension |> Secret_name.inject
+    let prefix = get_secrets_dir () ^ Filename.dir_sep in
+    let prefix_len = String.length prefix in
+    String.sub fname prefix_len (String.length fname - prefix_len) |> FilePath.chop_extension |> Secret_name.inject
 
   let secret_exists secret_name = Path.abs (agefile_of_name secret_name) |> Path.file_exists
 
@@ -67,7 +88,7 @@ module Secrets = struct
       (* We have this check here to avoid uncaught exns in other spots later *)
       let (_ : Path.t) = agefile_of_name name in
       name |> Secret_name.norm_secret
-    with FilePath.NoExtension filename -> Devkit.Exn.fail "%s is not a valid secret" filename
+    with FilePath.NoExtension filename -> Base.die "%s is not a valid secret" filename
 
   let get_secrets_tree path =
     let full_path = Path.(project @@ abs path) in
@@ -112,10 +133,10 @@ module Secrets = struct
         let existing_groups = all_groups_names () in
         (match List.mem group_name existing_groups with
         (* We don't want to allow referencing non existent groups *)
-        | false -> failwith (sprintf "E: group %S doesn't exist" group_name')
+        | false -> Base.die "E: group %S doesn't exist" group_name'
         | true ->
           let group_file = FilePath.concat (Keys.get_keys_dir ()) (FilePath.add_extension group_name groups_ext) in
-          Action.config_lines group_file)
+          config_lines group_file)
     in
     List.map map_fn recipients_names
 
@@ -134,7 +155,7 @@ module Secrets = struct
             | false -> secret_names, subdirs)
           ([], []) dir_contents
       in
-      let recipients_and_groups = Action.config_lines keys_file in
+      let recipients_and_groups = config_lines keys_file in
       let groups_names, _recipients = List.partition Age.is_group_recipient @@ recipients_and_groups in
       let is_recipient_from_groups =
         List.fold_left
@@ -166,7 +187,7 @@ module Secrets = struct
     concat (concat (inject (get_secrets_dir ())) path_to_secret) (inject keys_ext)
 
   let get_recipients_names path =
-    Action.config_lines (Path.project (get_recipients_file_path path)) |> List.sort String.compare
+    config_lines (Path.project (get_recipients_file_path path)) |> List.sort String.compare
 
   let get_recipients_from_path_exn path =
     let recipients' = get_recipients_names path in
@@ -212,7 +233,7 @@ module Secrets = struct
 
   let decrypt_exn ?use_sudo ?(silence_stderr = false) secret_name =
     let secret_file = Path.(project @@ abs @@ agefile_of_name secret_name) in
-    let ciphertext = Devkit.Control.with_input_txt secret_file IO.read_all in
+    let ciphertext = In_channel.with_open_text secret_file In_channel.input_all in
     Age.decrypt_string ?use_sudo ~identity_file:(Lazy.force !Config.identity_file) ~silence_stderr ciphertext
 
   let refresh' ?use_sudo ?(force = false) secret_name self_key =
@@ -244,12 +265,12 @@ module Secrets = struct
             skipped + 1, refreshed, failed
           | Failed exn ->
             let () =
-              verbose_eprintlf ~verbose "W: failed to refresh %s : %s" raw_secret_name (Devkit.Exn.to_string exn)
+              verbose_eprintlf ~verbose "W: failed to refresh %s : %s" raw_secret_name (Printexc.to_string exn)
             in
             skipped, refreshed, failed + 1)
         (0, 0, 0) secrets
     in
-    Printf.eprintf "I: refreshed %d secrets, skipped %d, failed %d\n" refreshed skipped failed
+    Base.eprintfn "I: refreshed %d secrets, skipped %d, failed %d" refreshed skipped failed
 
   let rm ~is_directory path =
     try

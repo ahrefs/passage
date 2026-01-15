@@ -10,9 +10,9 @@ let run_cmd ?(stdin = Bos.OS.Cmd.in_stdin) ?(silence_stderr = false) ?(use_sudo 
   | Ok (result, s) ->
     (match s with
     | _i, `Exited 0 -> result
-    | _i, `Exited n -> failwith (Printf.sprintf "%s : exit code %d" raw_command n)
-    | _, `Signaled n -> failwith (Printf.sprintf "%s : stopped %d" raw_command n))
-  | Error (`Msg m) -> failwith (Printf.sprintf "%s: %s" raw_command m)
+    | _i, `Exited n -> Base.die "%s : exit code %d" raw_command n
+    | _, `Signaled n -> Base.die "%s : stopped %d" raw_command n)
+  | Error (`Msg m) -> Base.die "%s: %s" raw_command m
 
 let run_cmd_stdout ?(silence_stderr = false) ?use_sudo raw_cmd_fmt =
   ksprintf
@@ -53,7 +53,7 @@ let die ?exn fmt =
     (fun out ->
       (match exn with
       | None -> fprintf out "\n"
-      | Some exn -> fprintf out " : %s\n" (Devkit.Exn.to_string exn));
+      | Some exn -> fprintf out " : %s\n" (Printexc.to_string exn));
       exit 1)
     stderr fmt
 

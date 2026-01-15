@@ -25,7 +25,7 @@ let try_lex_iden open_tag lexbuf =
   let iden = iden lexbuf in
   match iden with
   | TEXT t -> TEXT (open_tag ^ t)
-  | EOF -> Devkit.Exn.fail "expected non-EOF"
+  | EOF -> failwith "expected non-EOF"
   | IDEN i ->
   match close_iden lexbuf with
   | "}}}" -> IDEN i
@@ -36,4 +36,4 @@ let token lexbuf =
   | "{{{" -> try_lex_iden (lexeme lexbuf) lexbuf
   | "{" | "}" | text -> TEXT (lexeme lexbuf)
   | eof -> EOF
-  | _ -> Devkit.Exn.fail "unexpected chars: '%s'" (lexeme lexbuf)
+  | _ -> Base.die "unexpected chars: '%s'" (lexeme lexbuf)

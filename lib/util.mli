@@ -19,6 +19,3 @@ module Secret : sig
   val die_failed_get_recipients : ?exn:exn -> string -> 'a
   val reconstruct_with_new_text : is_singleline:bool -> new_text:string -> existing_comments:string option -> string
 end
-
-val die : ?exn:exn -> ('a, unit, string, 'b) format4 -> 'a
-val verbose_eprintlf : ?verbose:bool -> ('a, unit, string, unit) format4 -> 'a
