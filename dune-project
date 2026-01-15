@@ -29,8 +29,6 @@
    (>= 4.14))
   conf-age
   dune
-  (devkit
-   (>= 1.20240429))
   extunix
   fileutils
   fpath

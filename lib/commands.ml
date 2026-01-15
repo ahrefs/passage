@@ -26,43 +26,47 @@ The location of these can be overriden using environment variables. Please check
 What should be the name used for your recipient identity?|}
       in
       let user_name =
-        String.trim @@ In_channel.input_all stdin
-        |> ExtString.String.replace_chars (fun c ->
-               match c with
-               | ' ' -> "_"
-               | '\n' -> ""
-               | c -> Char.escaped c)
+        let input = String.trim @@ In_channel.input_all stdin in
+        let buf = Buffer.create (String.length input) in
+        String.iter
+          (fun c ->
+            match c with
+            | ' ' -> Buffer.add_char buf '_'
+            | '\n' -> ()
+            | c -> Buffer.add_string buf (Char.escaped c))
+          input;
+        Buffer.contents buf
       in
       let () = Shell.age_generate_identity_key_root_group_exn ?use_sudo user_name in
-      Util.verbose_eprintlf "I: Passage setup completed.\n"
+      Base.verbose_eprintlf "I: Passage setup completed.\n"
     with exn ->
       (* Error out and delete everything, so we can start fresh next time *)
       FileUtil.rm ~recurse:true [ Lazy.force !Config.base_dir ];
-      Util.die ~exn "E: Passage init failed"
+      Base.die ~exn "E: Passage init failed"
 end
 
 module Get = struct
   let get_secret ?use_sudo ?expected_kind ?line_number ?(with_comments = false) ?(trim_new_line = false) secret_name =
     let secret_exists =
-      try Storage.Secrets.secret_exists secret_name with exn -> Util.die ~exn "E: %s" (show_name secret_name)
+      try Storage.Secrets.secret_exists secret_name with exn -> Base.die ~exn "E: %s" (show_name secret_name)
     in
     (match secret_exists with
     | false ->
       if Path.is_directory Storage.Secrets.(to_path secret_name |> Path.abs) then
-        Util.die "E: %s is a directory" (show_name secret_name)
-      else Util.die "E: no such secret: %s" (show_name secret_name)
+        Base.die "E: %s is a directory" (show_name secret_name)
+      else Base.die "E: no such secret: %s" (show_name secret_name)
     | true -> ());
     let get_line_exn secret line_number =
-      if line_number < 1 then Util.die "Line number should be greater than 0";
+      if line_number < 1 then Base.die "Line number should be greater than 0";
       let lines = String.split_on_char '\n' secret in
       (* user specified line number is 1-indexed *)
       match List.nth_opt lines (line_number - 1) with
-      | None -> Util.die "There is no secret at line %d" line_number
+      | None -> Base.die "There is no secret at line %d" line_number
       | Some l -> l
     in
     let plaintext =
       try Storage.Secrets.decrypt_exn ?use_sudo secret_name
-      with exn -> Util.die ~exn "E: failed to decrypt %s" (show_name secret_name)
+      with exn -> Base.die ~exn "E: failed to decrypt %s" (show_name secret_name)
     in
     let secret =
       match with_comments, line_number with
@@ -71,14 +75,14 @@ module Get = struct
       | false, _ ->
         let secret =
           try Secret.Validation.parse_exn plaintext
-          with exn -> Util.die ~exn "E: failed to parse %s" (show_name secret_name)
+          with exn -> Base.die ~exn "E: failed to parse %s" (show_name secret_name)
         in
         let kind = secret.kind in
         (* we can have this validation only here because we don't have expected kinds when using the cat command
             (the with_comments = true branch) *)
         (match Option.is_some expected_kind && Option.get expected_kind <> kind with
         | true ->
-          Util.die "E: %s is expected to be a %s secret but it is a %s secret" (show_name secret_name)
+          Base.die "E: %s is expected to be a %s secret but it is a %s secret" (show_name secret_name)
             (Secret.kind_to_string @@ Option.get expected_kind)
             (Secret.kind_to_string kind)
         | false -> ());
@@ -103,10 +107,10 @@ module List_ = struct
     match secret_exists with
     | true -> [ Storage.Secrets.(name_of_file (Path.abs path) |> show_name) ]
     | false ->
-      let is_dir = try Path.is_directory (Path.abs path) with exn -> Util.die ~exn "E: %s" raw_path in
+      let is_dir = try Path.is_directory (Path.abs path) with exn -> Base.die ~exn "E: %s" raw_path in
       (match is_dir with
       | true -> Storage.(Secrets.get_secrets_tree path |> List.sort Secret_name.compare) |> List.map show_name
-      | false -> Util.die "No secrets at %s" raw_path)
+      | false -> Base.die "No secrets at %s" raw_path)
 end
 
 module Recipients = struct
@@ -116,7 +120,7 @@ module Recipients = struct
     | true ->
       (* also adds root group by default for all new secrets *)
       let root_recipients_names = Storage.Secrets.recipients_of_group_name_exn ~map_fn:Fun.id "@root" in
-      let () = Devkit.eprintfn "\nI: using recipient group @root for secret %s" (show_path secret_path) in
+      let () = Base.eprintfn "\nI: using recipient group @root for secret %s" (show_path secret_path) in
       (* avoid repeating names if the user creating the secret is already in the root group *)
       let recipients_names =
         List.filter_map
@@ -124,7 +128,7 @@ module Recipients = struct
             match List.mem r.Age.name root_recipients_names with
             | true -> None
             | false ->
-              let () = Printf.eprintf "I: using recipient %s for secret %s\n" r.name (show_path secret_path) in
+              let () = Base.eprintfn "I: using recipient %s for secret %s" r.name (show_path secret_path) in
               Some r.name)
           recipients
       in
@@ -132,7 +136,7 @@ module Recipients = struct
       let recipients_names_with_root_group = "@root" :: (recipients_names |> List.sort String.compare) in
       let recipients_file_path = Storage.Secrets.get_recipients_file_path secret_path in
       let (_ : Path.t) = Path.ensure_parent recipients_file_path in
-      Devkit.Control.with_open_out_txt (show_path recipients_file_path) (fun oc ->
+      Out_channel.with_open_text (show_path recipients_file_path) (fun oc ->
           List.iter (fun line -> Printf.fprintf oc "%s\n" line) recipients_names_with_root_group)
 
   let rewrite_recipients_file ?use_sudo secret_name new_recipients_list =
@@ -143,7 +147,7 @@ module Recipients = struct
     (* Deduplicate and sort recipients *)
     let deduplicated_recipients = List.sort_uniq String.compare new_recipients_list in
     let () =
-      Devkit.Control.with_open_out_txt (show_path secret_recipients_file) (fun oc ->
+      Out_channel.with_open_text (show_path secret_recipients_file) (fun oc ->
           List.iter (fun line -> Printf.fprintf oc "%s\n" line) deduplicated_recipients)
     in
     let sorted_updated_recipients_names = Storage.Secrets.get_recipients_names secret_path in
@@ -161,7 +165,7 @@ module Recipients = struct
     Invariant.run_if_recipient ~op_string:"add recipients" ~path:secret_path ~f:(fun () ->
         let () =
           match Validation.validate_recipients_for_commands recipients_to_add with
-          | Error msg -> Util.die "%s" msg
+          | Error msg -> Base.die "%s" msg
           | Ok () -> ()
         in
         let current_recipients = Storage.Secrets.get_recipients_names secret_path in
@@ -171,7 +175,7 @@ module Recipients = struct
         | false ->
           let () = rewrite_recipients_file ?use_sudo secret_name new_recipients in
           let added_count = List.length new_recipients - List.length current_recipients in
-          Devkit.eprintfn "I: added %d recipient%s" added_count (if added_count = 1 then "" else "s"))
+          Base.eprintfn "I: added %d recipient%s" added_count (if added_count = 1 then "" else "s"))
 
   let remove_recipients_from_secret ?use_sudo secret_name recipients_to_remove =
     let secret_path = path_of_secret_name secret_name in
@@ -181,48 +185,48 @@ module Recipients = struct
         let new_recipients = List.filter (fun r -> not (List.mem r recipients_to_remove)) current_recipients in
         (* Check for non-existent recipients to warn about *)
         let non_existent = List.filter (fun r -> not (List.mem r current_recipients)) recipients_to_remove in
-        if new_recipients = [] then Util.die "E: cannot remove all recipients - at least one recipient must remain"
+        if new_recipients = [] then Base.die "E: cannot remove all recipients - at least one recipient must remain"
         else if current_recipients = new_recipients then (
           match non_existent with
           | [] -> prerr_endline "I: no changes made - specified recipients were already absent"
-          | _ -> Util.die "E: recipients not found: %s" (String.concat ", " non_existent))
+          | _ -> Base.die "E: recipients not found: %s" (String.concat ", " non_existent))
         else (
           (* Show warnings for non-existent recipients before proceeding *)
           let () =
             if non_existent <> [] then
-              Devkit.eprintfn "W: recipients not found to remove: %s" (String.concat ", " non_existent)
+              Base.eprintfn "W: recipients not found to remove: %s" (String.concat ", " non_existent)
             else ()
           in
           let () = rewrite_recipients_file ?use_sudo secret_name new_recipients in
           let removed_count = List.length current_recipients - List.length new_recipients in
-          Devkit.eprintfn "I: removed %d recipient%s" removed_count (if removed_count = 1 then "" else "s")))
+          Base.eprintfn "I: removed %d recipient%s" removed_count (if removed_count = 1 then "" else "s")))
 
   let list_recipient_secrets ?use_sudo ?(verbose = false) recipients_names =
-    if recipients_names = [] then Util.die "E: Must specify at least one recipient name";
+    if recipients_names = [] then Base.die "E: Must specify at least one recipient name";
     let number_of_recipients = List.length recipients_names in
     let all_recipient_names = Storage.Keys.all_recipient_names () in
     List.iter
       (fun recipient_name ->
         let open Storage in
         match List.mem recipient_name all_recipient_names, Age.is_group_recipient recipient_name with
-        | false, false -> Devkit.eprintfn "E: no such recipient %s" recipient_name
+        | false, false -> Base.eprintfn "E: no such recipient %s" recipient_name
         | _ ->
         match Secrets.get_secrets_for_recipient recipient_name with
-        | [] -> Devkit.eprintfn "\nNo secrets found for %s" recipient_name
+        | [] -> Base.eprintfn "\nNo secrets found for %s" recipient_name
         | secrets ->
           let () =
-            if number_of_recipients > 1 then Devkit.eprintfn "\nSecrets which %s is a recipient of:" recipient_name
+            if number_of_recipients > 1 then Base.eprintfn "\nSecrets which %s is a recipient of:" recipient_name
             else ()
           in
           let sorted = List.sort Secret_name.compare secrets in
           let print_secret secret =
             match verbose with
-            | false -> Printf.printf "%s\n" (show_name secret)
+            | false -> Base.printfn "%s" (show_name secret)
             | true ->
             try
               let plaintext = Util.Secret.decrypt_silently ?use_sudo secret in
-              Printf.printf "%s\n" (Secret.Validation.validity_to_string (show_name secret) plaintext)
-            with _ -> Printf.printf "🚨 %s [ WARNING: failed to decrypt ]\n" (show_name secret)
+              Base.printfn "%s" (Secret.Validation.validity_to_string (show_name secret) plaintext)
+            with _ -> Base.printfn "🚨 %s [ WARNING: failed to decrypt ]" (show_name secret)
           in
           let () = List.iter print_secret sorted in
           flush stderr)
@@ -234,7 +238,7 @@ module Recipients = struct
       List.iter
         (fun (r : Age.recipient) ->
           (match r.keys with
-          | [] -> Devkit.eprintfn "W: no keys found for %s" r.name
+          | [] -> Base.eprintfn "W: no keys found for %s" r.name
           | _ -> ());
           print_endline r.name)
         recipients
@@ -245,7 +249,7 @@ module Recipients = struct
       |> print_from_recipient_list
     | false ->
     match Storage.Secrets.secret_exists_at path || Storage.Secrets.get_secrets_tree path <> [] with
-    | false -> Util.die "E: no such secret %s" (show_path path)
+    | false -> Base.die "E: no such secret %s" (show_path path)
     | true ->
     match expand_groups with
     | true ->
@@ -270,12 +274,12 @@ module Recipients = struct
               in
               [ Age.Key.inject "" ]
             with exn ->
-              Devkit.printfn "E: couldn't retrieve recipients for group %s. Reason: %s" recipient_name
+              Base.printfn "E: couldn't retrieve recipients for group %s. Reason: %s" recipient_name
                 (Printexc.to_string exn);
               []
           in
           (match recipient_keys with
-          | [] -> Devkit.eprintfn "W: no keys found for %s" recipient_name
+          | [] -> Base.eprintfn "W: no keys found for %s" recipient_name
           | _ -> ());
           print_endline recipient_name)
         recipients_names
@@ -290,25 +294,29 @@ module Refresh = struct
           | true ->
             (* we need to clarify if the recipient is a group or a recipient, since we use the same syntax for both *)
             let recipient =
-              let r = Devkit.Stre.drop_prefix path_or_recip "@" in
+              let r =
+                if String.starts_with ~prefix:"@" path_or_recip then
+                  String.sub path_or_recip 1 (String.length path_or_recip - 1)
+                else path_or_recip
+              in
               match List.mem r (Storage.Secrets.all_groups_names ()), r = "everyone" with
               | false, false -> r
               | _ -> path_or_recip
             in
             (match Storage.Secrets.get_secrets_for_recipient recipient with
-            | [] -> Util.die "E: no secrets found for recipient %s" path_or_recip
+            | [] -> Base.die "E: no secrets found for recipient %s" path_or_recip
             | secrets -> secrets)
           | false ->
             let path =
               try Path.build_rel_path path_or_recip
-              with Failure s -> Util.die "E: invalid path %s: %s" path_or_recip s
+              with Failure s -> Base.die "E: invalid path %s: %s" path_or_recip s
             in
             (match Storage.Secrets.get_secrets_tree path with
             | _ :: _ as secrets -> secrets
             | [] ->
             match Storage.Secrets.secret_exists_at path with
             | true -> [ secret_name_of_path path ]
-            | false -> Util.die "E: no secrets at %s" path_or_recip))
+            | false -> Base.die "E: no secrets at %s" path_or_recip))
           @ acc)
         [] paths
     in
@@ -327,7 +335,7 @@ module Template = struct
     substitute ~template
 
   let list_template_secrets template_file =
-    let tree = try parse_file template_file with exn -> Util.die ~exn "Failed to parse the file" in
+    let tree = try parse_file template_file with exn -> Base.die ~exn "Failed to parse the file" in
     List.filter_map
       (fun node ->
         match node with
@@ -358,7 +366,7 @@ module Rm = struct
       (fun path ->
         let is_directory = Path.is_directory (Path.abs path) in
         (match Storage.Secrets.secret_exists_at path, is_directory with
-        | false, false -> Util.die "E: no secrets exist at %s" (show_path path)
+        | false, false -> Base.die "E: no secrets exist at %s" (show_path path)
         | _ -> ());
         let string_path = show_path path in
         let r =
@@ -370,12 +378,12 @@ module Rm = struct
             (match f ~path with
             | true -> Storage.Secrets.rm ~is_directory path
             | false -> Storage.Secrets.Skipped)
-          | None -> Util.die "E: please provide a confirmation function for TTY environments"
+          | None -> Base.die "E: please provide a confirmation function for TTY environments"
         in
         match r with
-        | Storage.Secrets.Succeeded () -> Util.verbose_eprintlf ~verbose "I: removed %s" string_path
-        | Skipped -> Devkit.eprintfn "I: skipped deleting %s" string_path
-        | Failed exn -> Util.die "E: failed to delete %s : %s" string_path (Devkit.Exn.to_string exn))
+        | Storage.Secrets.Succeeded () -> Base.verbose_eprintlf ~verbose "I: removed %s" string_path
+        | Skipped -> Base.eprintfn "I: skipped deleting %s" string_path
+        | Failed exn -> Base.die "E: failed to delete %s : %s" string_path (Printexc.to_string exn))
       paths
 end
 
@@ -389,15 +397,15 @@ module Search = struct
           | Succeeded true -> n_skipped, n_failed, n_matched + 1, secret :: matched_secrets
           | Succeeded false -> n_skipped, n_failed, n_matched, matched_secrets
           | Skipped ->
-            Util.verbose_eprintlf ~verbose "I: skipped %s" (show_name secret);
+            Base.verbose_eprintlf ~verbose "I: skipped %s" (show_name secret);
             n_skipped + 1, n_failed, n_matched, matched_secrets
           | Failed exn ->
-            Devkit.eprintfn "W: failed to search %s : %s" (show_name secret) (Devkit.Exn.to_string exn);
+            Base.eprintfn "W: failed to search %s : %s" (show_name secret) (Printexc.to_string exn);
             n_skipped, n_failed + 1, n_matched, matched_secrets)
         (0, 0, 0, []) secrets
     in
     List.rev matched_secrets |> List.iter (fun s -> print_endline (show_name s));
-    Printf.eprintf "I: skipped %d secrets, failed to search %d secrets and matched %d secrets\n" n_skipped n_failed
+    Base.eprintfn "I: skipped %d secrets, failed to search %d secrets and matched %d secrets" n_skipped n_failed
       n_matched
 end
 
@@ -405,7 +413,7 @@ module Show = struct
   let list_secrets_tree path =
     let full_path = Path.abs path in
     match Path.is_directory full_path, Storage.Secrets.secret_exists_at path with
-    | false, false -> Util.die "No secrets at this path : %s" (show_path full_path)
+    | false, false -> Base.die "No secrets at this path : %s" (show_path full_path)
     | false, true -> Get.get_secret ~with_comments:true (secret_name_of_path path)
     | true, _ ->
       let tree = Dirtree.of_path (Path.to_fpath (Path.abs path)) in
@@ -433,13 +441,13 @@ If the secret is a staging secret, its only recipient should be @everyone.
       match Storage.Secrets.secret_exists secret_name with
       | false -> None
       | true ->
-      try Devkit.some @@ Storage.Secrets.decrypt_exn ?use_sudo secret_name
-      with exn -> Util.die ~exn "E: failed to decrypt %s" secret_name_str
+      try Some (Storage.Secrets.decrypt_exn ?use_sudo secret_name)
+      with exn -> Base.die ~exn "E: failed to decrypt %s" secret_name_str
     in
     try
       let updated_secret = Result.bind (get_updated_secret original_secret) Validation.validate_secret in
       match updated_secret, original_secret with
-      | Error e, _ -> Util.die "E: %s" e
+      | Error e, _ -> Base.die "E: %s" e
       | Ok updated_secret, Some original_secret when updated_secret = original_secret ->
         prerr_endline "I: secret unchanged"
       | Ok updated_secret, _ ->
@@ -452,7 +460,7 @@ If the secret is a staging secret, its only recipient should be @everyone.
             Storage.Secrets.get_recipients_from_path_exn secret_path)
           else secret_recipients'
         in
-        if secret_recipients = [] then Util.die "E: no recipients specified for this secret"
+        if secret_recipients = [] then Base.die "E: no recipients specified for this secret"
         else (
           let is_first_secret_in_new_folder = Option.is_none original_secret && secret_recipients' = [] in
           match allow_retry with
@@ -463,14 +471,14 @@ If the secret is a staging secret, its only recipient should be @everyone.
           try
             show_recipients_notice_if_true is_first_secret_in_new_folder;
             Storage.Secrets.encrypt_exn ?use_sudo ~verbose ~plaintext:updated_secret ~secret_name secret_recipients
-          with exn -> Util.die ~exn "E: encrypting %s failed" secret_name_str)
-    with Failure s -> Util.die "%s" s
+          with exn -> Base.die ~exn "E: encrypting %s failed" secret_name_str)
+    with Failure s -> Base.die "%s" s
 end
 
 module Create = struct
   let base_check ?use_sudo secret_name =
     match Storage.Secrets.secret_exists secret_name with
-    | true -> Util.die "E: refusing to create: a secret by that name already exists"
+    | true -> Base.die "E: refusing to create: a secret by that name already exists"
     | false ->
       let path = Storage.Secrets.(to_path secret_name) in
       Invariant.die_if_invariant_fails ?use_sudo ~op_string:"create" path
@@ -484,12 +492,12 @@ module Create = struct
           | Some comment, None | None, Some comment -> Some comment
           | None, None -> None
           | Some _, Some _ ->
-            Util.die
+            Base.die
               "E: secret text already contains comments. Either use the secret text with comments or use the --comment \
                flag."
         in
         match Validation.validate_comments (Option.value ~default:"" comments) with
-        | Error e -> Util.die "E: invalid comment format: %s" e
+        | Error e -> Base.die "E: invalid comment format: %s" e
         | Ok comments -> Ok (Util.Secret.reconstruct_secret ~comments parsed_secret))
 
   let bare ?use_sudo ~f secret_name =
@@ -503,7 +511,7 @@ module Replace = struct
     Invariant.run_if_recipient ~op_string:"replace secret"
       ~path:Storage.Secrets.(to_path secret_name)
       ~f:(fun () ->
-        if new_secret_plaintext = "" then Util.die "E: invalid input, empty secrets are not allowed.";
+        if new_secret_plaintext = "" then Base.die "E: invalid input, empty secrets are not allowed.";
         let is_singleline_secret =
           (* New secret is single line if doesn't have a newline character or if it has only one,
               at the end of the first line. This input isn't supposed to follow the storage format,
@@ -526,7 +534,7 @@ module Replace = struct
                 let secret_plaintext = Storage.Secrets.decrypt_exn ~silence_stderr:true secret_name in
                 Secret.Validation.parse_exn secret_plaintext
               with _e ->
-                Util.die
+                Base.die
                   "E: unable to parse secret %s's format. If we proceed, the comments will be lost. Aborting. Please \
                    use the edit command to replace and fix this secret."
                   (show_name secret_name)
@@ -535,7 +543,7 @@ module Replace = struct
               ~existing_comments:original_secret.comments
         in
         try Storage.Secrets.encrypt_exn ~verbose:false ~plaintext:updated_secret ~secret_name recipients
-        with exn -> Util.die ~exn "E: encrypting %s failed" (show_name secret_name))
+        with exn -> Base.die ~exn "E: encrypting %s failed" (show_name secret_name))
 
   let replace_comment ?use_sudo secret_name get_new_comments =
     let secret_name_str = show_name secret_name in
@@ -544,12 +552,12 @@ module Replace = struct
       ~path:Storage.Secrets.(to_path secret_name)
       ~f:(fun () ->
         match Storage.Secrets.secret_exists secret_name with
-        | false -> Util.die "E: no such secret: %s" secret_name_str
+        | false -> Base.die "E: no such secret: %s" secret_name_str
         | true ->
           let original_secret =
             try Util.Secret.decrypt_and_parse ?use_sudo ~silence_stderr:true secret_name
             with _e ->
-              Util.die
+              Base.die
                 "E: unable to parse secret %s's format. Please fix it before replacing the comments,or use the edit \
                  command"
                 secret_name_str
@@ -557,5 +565,5 @@ module Replace = struct
           let new_comments = get_new_comments original_secret.comments in
           let updated_secret = Util.Secret.reconstruct_secret ~comments:new_comments original_secret in
           (try Storage.Secrets.encrypt_exn ?use_sudo ~verbose:false ~plaintext:updated_secret ~secret_name recipients
-           with exn -> Util.die ~exn "E: encrypting %s failed" secret_name_str))
+           with exn -> Base.die ~exn "E: encrypting %s failed" secret_name_str))
 end

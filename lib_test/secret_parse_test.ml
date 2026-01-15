@@ -10,7 +10,7 @@ Text:
 Comments:
 %s|} (Validation_test.string_of_kind kind) text
          (Option.value ~default:"" comments)
-  with exn -> print_endline ("Error: " ^ Devkit.Exn.to_string exn)
+  with exn -> print_endline ("Error: " ^ Printexc.to_string exn)
 
 let%expect_test "empty string or whitespace string" =
   parse {||};

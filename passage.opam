@@ -14,7 +14,6 @@ depends: [
   "ocaml" {>= "4.14"}
   "conf-age"
   "dune" {>= "3.9"}
-  "devkit" {>= "1.20240429"}
   "extunix"
   "fileutils"
   "fpath"
