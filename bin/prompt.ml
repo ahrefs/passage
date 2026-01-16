@@ -56,7 +56,7 @@ let get_valid_input_from_stdin_exn () =
     | Error e ->
       if is_TTY = false then Shell.die "%s" e
       else (
-        let () = Base.printfn "\nThis secret is in an invalid format: %s" e in
+        let () = Util.printfn "\nThis secret is in an invalid format: %s" e in
         if yesno "Edit again?" then input_and_validate_loop ~validate ~initial:input get_input else Error e)
   in
   input_and_validate_loop ~validate:Validation.validate_secret (fun ?initial:_ () -> In_channel.input_all stdin)
@@ -125,7 +125,7 @@ Are you sure you would like to continue?|}
             match is_TTY with
             | false -> Shell.die "%s" e
             | true ->
-              let () = Base.printfn "\n%s" e in
+              let () = Util.printfn "\n%s" e in
               (match yesno "Edit again?" with
               | false -> Shell.die "%s" e
               | true ->

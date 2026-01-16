@@ -21,7 +21,7 @@ let substitute_iden ?use_sudo node =
      with
     | Failure s -> failwith ("unable to decrypt secret: " ^ s)
     | exn ->
-      let () = Base.eprintfn "E: could not decrypt secret %s" (Storage.Secret_name.project secret_name) in
+      let () = Util.eprintfn "E: could not decrypt secret %s" (Storage.Secret_name.project secret_name) in
       raise exn)
 
 let build_text_from_ast ast =
@@ -29,6 +29,6 @@ let build_text_from_ast ast =
     (fun node ->
       match node with
       | Template_ast.Text s -> s
-      | Template_ast.Iden secret_name -> Base.die "found unsubstituted secret %s" secret_name)
+      | Template_ast.Iden secret_name -> failwith (Printf.sprintf "found unsubstituted secret %s" secret_name))
     ast
   |> String.concat ""

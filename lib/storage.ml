@@ -88,7 +88,7 @@ module Secrets = struct
       (* We have this check here to avoid uncaught exns in other spots later *)
       let (_ : Path.t) = agefile_of_name name in
       name |> Secret_name.norm_secret
-    with FilePath.NoExtension filename -> Base.die "%s is not a valid secret" filename
+    with FilePath.NoExtension filename -> failwith (sprintf "%s is not a valid secret" filename)
 
   let get_secrets_tree path =
     let full_path = Path.(project @@ abs path) in
@@ -133,7 +133,7 @@ module Secrets = struct
         let existing_groups = all_groups_names () in
         (match List.mem group_name existing_groups with
         (* We don't want to allow referencing non existent groups *)
-        | false -> Base.die "E: group %S doesn't exist" group_name'
+        | false -> failwith (sprintf "E: group %S doesn't exist" group_name')
         | true ->
           let group_file = FilePath.concat (Keys.get_keys_dir ()) (FilePath.add_extension group_name groups_ext) in
           config_lines group_file)
@@ -270,7 +270,7 @@ module Secrets = struct
             skipped, refreshed, failed + 1)
         (0, 0, 0) secrets
     in
-    Base.eprintfn "I: refreshed %d secrets, skipped %d, failed %d" refreshed skipped failed
+    ksprintf prerr_endline "I: refreshed %d secrets, skipped %d, failed %d" refreshed skipped failed
 
   let rm ~is_directory path =
     try

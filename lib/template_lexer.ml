@@ -36,4 +36,4 @@ let token lexbuf =
   | "{{{" -> try_lex_iden (lexeme lexbuf) lexbuf
   | "{" | "}" | text -> TEXT (lexeme lexbuf)
   | eof -> EOF
-  | _ -> Base.die "unexpected chars: '%s'" (lexeme lexbuf)
+  | _ -> failwith (Printf.sprintf "unexpected chars: '%s'" (lexeme lexbuf))
