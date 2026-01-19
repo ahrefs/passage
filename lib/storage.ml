@@ -46,7 +46,7 @@ module Keys = struct
     FileUtil.find ~follow:Follow (Has_extension ext) (get_keys_dir ())
       (fun acc f ->
         let name = FilePath.make_relative (get_keys_dir ()) f in
-        let name = Filename.chop_suffix name ("." ^ ext) in
+        let name = FilePath.chop_extension name in
         name :: acc)
       []
     |> List.sort String.compare
