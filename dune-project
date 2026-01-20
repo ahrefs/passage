@@ -29,12 +29,11 @@
    (>= 4.14))
   conf-age
   dune
-  extunix
   fileutils
   fpath
   (menhir
    (>= 20231231))
-  ppx_expect
+  (ppx_expect :with-test)
   (ocamlformat
    (and
     :with-dev-setup
