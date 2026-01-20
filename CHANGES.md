@@ -1,3 +1,7 @@
+# Unreleased
+remove `devkit` dependency
+remove `re2` dependency, use `re` instead
+
 ## 0.3.1 (2025-12-04)
 - Add installion state on `passage healthcheck command`
 - Add `x-maintenance-intent` policy

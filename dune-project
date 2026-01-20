@@ -24,7 +24,7 @@
  (depends
   bos
   (cmdliner
-   (< 2.0.0))
+   (>= 2.0.0))
   (ocaml
    (>= 4.14))
   conf-age
@@ -33,12 +33,11 @@
   fpath
   (menhir
    (>= 20231231))
-  (ppx_expect
-    :with-test)
+  (ppx_expect :with-test)
   (ocamlformat
    (and
     :with-dev-setup
-    (= 0.26.2)))
+    (= 0.28.1)))
   qrc
   re
   sedlex))

@@ -10,9 +10,9 @@ let run_cmd ?(stdin = Bos.OS.Cmd.in_stdin) ?(silence_stderr = false) ?(use_sudo 
   | Ok (result, s) ->
     (match s with
     | _i, `Exited 0 -> result
-    | _i, `Exited n -> Base.die "%s : exit code %d" raw_command n
-    | _, `Signaled n -> Base.die "%s : stopped %d" raw_command n)
-  | Error (`Msg m) -> Base.die "%s: %s" raw_command m
+    | _i, `Exited n -> Exn.die "%s : exit code %d" raw_command n
+    | _, `Signaled n -> Exn.die "%s : stopped %d" raw_command n)
+  | Error (`Msg m) -> Exn.die "%s: %s" raw_command m
 
 let run_cmd_stdout ?(silence_stderr = false) ?use_sudo raw_cmd_fmt =
   ksprintf

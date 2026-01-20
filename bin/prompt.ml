@@ -45,10 +45,9 @@ let preprocess_content input =
   |> String.concat "\n"
   |> remove_trailing_newlines
 
-(** Gets and validates user input reading from stdin. If the input has the wrong format, the user
-    is prompted to reinput the secret with the correct format. Allows passing in a function for input
-    transformation. Throws an error if the transformed input doesn't comply with the format and the
-    user doesn't want to fix the input format. *)
+(** Gets and validates user input reading from stdin. If the input has the wrong format, the user is prompted to reinput
+    the secret with the correct format. Allows passing in a function for input transformation. Throws an error if the
+    transformed input doesn't comply with the format and the user doesn't want to fix the input format. *)
 let get_valid_input_from_stdin_exn () =
   let rec input_and_validate_loop ~validate ?initial get_input =
     match validate @@ preprocess_content @@ get_input ?initial () with
@@ -56,7 +55,7 @@ let get_valid_input_from_stdin_exn () =
     | Error e ->
       if is_TTY = false then Shell.die "%s" e
       else (
-        let () = Base.printfn "\nThis secret is in an invalid format: %s" e in
+        let () = Util.printfn "\nThis secret is in an invalid format: %s" e in
         if yesno "Edit again?" then input_and_validate_loop ~validate ~initial:input get_input else Error e)
   in
   input_and_validate_loop ~validate:Validation.validate_secret (fun ?initial:_ () -> In_channel.input_all stdin)
@@ -110,29 +109,29 @@ Are you sure you would like to continue?|}
   (* Unified editor abstraction with validation and retry *)
   let edit_with_validation ?(initial = "") ~validate () =
     with_secure_tmpfile (fun (tmpfile, tmpfile_oc) ->
-        (* Write initial content and close to make available to editor *)
-        if initial <> "" then output_string tmpfile_oc initial;
-        close_out tmpfile_oc;
+      (* Write initial content and close to make available to editor *)
+      if initial <> "" then output_string tmpfile_oc initial;
+      close_out tmpfile_oc;
 
-        match edit_loop tmpfile with
-        | false -> Error "Editor cancelled"
-        | true ->
-          let rec validate_and_edit () =
-            let content = In_channel.with_open_text tmpfile In_channel.input_all in
-            match validate @@ preprocess_content content with
-            | Ok r -> r
-            | Error e ->
-            match is_TTY with
+      match edit_loop tmpfile with
+      | false -> Error "Editor cancelled"
+      | true ->
+        let rec validate_and_edit () =
+          let content = In_channel.with_open_text tmpfile In_channel.input_all in
+          match validate @@ preprocess_content content with
+          | Ok r -> r
+          | Error e ->
+          match is_TTY with
+          | false -> Shell.die "%s" e
+          | true ->
+            let () = Util.printfn "\n%s" e in
+            (match yesno "Edit again?" with
             | false -> Shell.die "%s" e
             | true ->
-              let () = Base.printfn "\n%s" e in
-              (match yesno "Edit again?" with
-              | false -> Shell.die "%s" e
-              | true ->
-                let _ = edit_loop tmpfile in
-                validate_and_edit ())
-          in
-          Ok (validate_and_edit ()))
+              let _ = edit_loop tmpfile in
+              validate_and_edit ())
+        in
+        Ok (validate_and_edit ()))
 end
 
 let edit_recipients secret_name =
@@ -185,8 +184,8 @@ let edit_recipients secret_name =
     let recipients_list =
       String.split_on_char '\n' content
       |> List.filter_map (fun line ->
-             let trimmed = String.trim line in
-             if trimmed = "" || String.starts_with ~prefix:"#" trimmed then None else Some trimmed)
+        let trimmed = String.trim line in
+        if trimmed = "" || String.starts_with ~prefix:"#" trimmed then None else Some trimmed)
     in
     match Validation.validate_recipients_for_editing recipients_list with
     | Error e -> Error e
