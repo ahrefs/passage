@@ -232,7 +232,7 @@ module Get = struct
       let read_clipboard () = Shell.xclip_read_clipboard ?x_selection () in
       let copy_to_clipboard s =
         try Shell.xclip_copy_to_clipboard ?x_selection s
-        with exn -> Util.die ~exn "E: could not copy data to the clipboard"
+        with exn -> Exn.die ~exn "E: could not copy data to the clipboard"
       in
       let restore_clipboard original_content =
         let () = Unix.sleep clip_time in

@@ -12,7 +12,7 @@ let error_not_recipient ~op_string path =
   in
   let expanded_recipients = get_expanded_recipient_names_from_folder base_folder in
   let () = List.iter (Util.eprintfn "  %s") expanded_recipients in
-  Util.die "E: refusing to %s: violates invariant" op_string
+  Exn.die "E: refusing to %s: violates invariant" op_string
 
 let user_is_listed_as_recipient path =
   let open Storage.Secrets in
@@ -54,4 +54,4 @@ let die_if_invariant_fails ?use_sudo ~op_string path =
               true)
           (get_secrets_in_folder base_folder)
       in
-      if fails_invariant then Util.die "E: refusing to %s: violates invariant" op_string else ())
+      if fails_invariant then Exn.die "E: refusing to %s: violates invariant" op_string else ())

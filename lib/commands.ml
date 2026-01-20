@@ -1,7 +1,7 @@
 open Printf
 open Util.Show
 
-let die = Util.die
+let die = Exn.die
 let verbose_eprintlf = Util.verbose_eprintlf
 let eprintfn = Util.eprintfn
 let printfn = Util.printfn
