@@ -1,4 +1,4 @@
-# 0.3.2 (2026-01-20)
+## 0.3.2 (2026-01-20)
 remove `devkit` dependency
 remove `re2` dependency, use `re` instead
 mark ppx-expect as `with-test`
