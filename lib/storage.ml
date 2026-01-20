@@ -298,7 +298,7 @@ module Secrets = struct
     match decrypt_exn ~silence_stderr:true secret_name with
     | exception exn -> Failed exn
     | content ->
-      let matched = Re2.matches pattern content in
+      let matched = Re.execp pattern content in
       Succeeded matched
 
   (** Returns a list with the keys that are recipients for the default identity file *)

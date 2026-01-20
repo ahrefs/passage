@@ -23,7 +23,8 @@
  (description "Passage - used to store and manage access to shared secrets")
  (depends
   bos
-  cmdliner
+  (cmdliner
+   (>= 2.0.0))
   (ocaml
    (>= 4.14))
   conf-age
@@ -39,5 +40,5 @@
     :with-dev-setup
     (= 0.26.2)))
   qrc
-  re2
+  re
   sedlex))

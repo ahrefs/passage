@@ -33,7 +33,11 @@ Regex specified as pattern  - should list all multiline secrets
   I: skipped 4 secrets, failed to search 0 secrets and matched 3 secrets
 
 Invalid regex specified as pattern
-  $ passage search "[" > /dev/null 2>&1
+  $ passage search "["
+  Usage: passage search [--help] [--verbose] [OPTION]… PATTERN [PATH]
+  passage: PATTERN argument: invalid regex pattern: [
   [124]
-  $ passage search "**" > /dev/null 2>&1
+  $ passage search "**"
+  Usage: passage search [--help] [--verbose] [OPTION]… PATTERN [PATH]
+  passage: PATTERN argument: invalid regex pattern: **
   [124]

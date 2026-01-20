@@ -29,6 +29,6 @@ let build_text_from_ast ast =
     (fun node ->
       match node with
       | Template_ast.Text s -> s
-      | Template_ast.Iden secret_name -> failwith (Printf.sprintf "found unsubstituted secret %s" secret_name))
+      | Template_ast.Iden secret_name -> Exn.die "found unsubstituted secret %s" secret_name)
     ast
   |> String.concat ""

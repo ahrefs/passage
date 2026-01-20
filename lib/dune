@@ -4,6 +4,6 @@
 (library
  (name passage)
  (public_name passage)
- (libraries bos extunix fileutils fpath menhirLib re2 sedlex unix)
+ (libraries bos extunix fileutils fpath menhirLib re sedlex unix)
  (preprocess
   (pps sedlex.ppx)))
