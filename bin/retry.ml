@@ -5,7 +5,7 @@ open Passage
 let rec retry_with_prompt ~operation ~error_message ~prompt_message =
   try operation ()
   with exn ->
-    let () = Devkit.eprintfn "%s: %s" error_message (Devkit.Exn.to_string exn) in
+    let () = Util.eprintfn "%s: %s" error_message (Printexc.to_string exn) in
     (match Prompt.yesno prompt_message with
     | false -> Shell.die "E: retry cancelled"
     | true -> retry_with_prompt ~operation ~error_message ~prompt_message)

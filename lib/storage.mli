@@ -3,10 +3,9 @@ module Secret_name : sig
 
   val inject : string -> t
   val project : t -> string
-  val inject_list : string list -> t list
-  val project_list : t list -> string list
   val compare : t -> t -> int
   val equal : t -> t -> bool
+
   val norm_secret : t -> t
 end
 

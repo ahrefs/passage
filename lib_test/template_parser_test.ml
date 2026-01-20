@@ -7,7 +7,7 @@ let test_parse_failure s =
   try
     let (_ : Template_ast.ast) = Template.parse s in
     ()
-  with exn -> print_endline (Devkit.Exn.to_string exn)
+  with exn -> print_endline (Printexc.to_string exn)
 
 let%expect_test "empty string" =
   test_parse_success "";

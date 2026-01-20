@@ -4,8 +4,6 @@ module Key : sig
   val project : t -> string
   val inject_list : string list -> t list
   val project_list : t list -> string list
-  val compare : t -> t -> int
-  val equal : t -> t -> bool
   val from_identity_file : ?use_sudo:bool -> string -> t
 end
 type recipient = {

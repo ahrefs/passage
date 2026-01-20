@@ -6,14 +6,12 @@ open Prompt
 open Util.Secret
 open Util.Show
 
-module Exn = Devkit.Exn
-
 type output_mode =
   | Clipboard
   | QrCode
   | Stdout
 
-let verbose_eprintlf ?(verbose = false) fmt = if verbose then Devkit.eprintfn fmt else ksprintf (Fun.const ()) fmt
+let eprintfn = Util.eprintfn
 
 module Converters = struct
   let secret_arg =
@@ -234,7 +232,7 @@ module Get = struct
       let read_clipboard () = Shell.xclip_read_clipboard ?x_selection () in
       let copy_to_clipboard s =
         try Shell.xclip_copy_to_clipboard ?x_selection s
-        with exn -> Exn.fail ~exn "E: could not copy data to the clipboard"
+        with exn -> Exn.die ~exn "E: could not copy data to the clipboard"
       in
       let restore_clipboard original_content =
         let () = Unix.sleep clip_time in
@@ -263,20 +261,21 @@ module Get = struct
       let () = copy_to_clipboard secret in
       (* flush before forking to avoid double-flush *)
       let () = flush_all () in
-      match Devkit.Nix.fork () with
-      | `Child ->
+      match Unix.fork () with
+      | 0 ->
+        (* Child process *)
         let (_ : int) = Unix.setsid () in
         let () = restore_clipboard original_content in
         `Child
-      | `Forked _ as forked -> forked
+      | pid ->
+        (* Parent process *)
+        `Forked pid
 
     let save_to_clipboard ~secret_name ~secret =
-      try
-        match save_to_clipboard_exn ~secret with
-        | `Child -> ()
-        | `Forked _ ->
-          Devkit.eprintfn "Copied %s to clipboard. Will clear in %d seconds." (show_name secret_name) clip_time
-      with exn -> Shell.die ~exn "E: failed to save to clipboard! Check if you have an X server running."
+      match save_to_clipboard_exn ~secret with
+      | `Child -> ()
+      | `Forked _ -> eprintfn "Copied %s to clipboard. Will clear in %d seconds." (show_name secret_name) clip_time
+      | exception exn -> Shell.die ~exn "E: failed to save to clipboard! Check if you have an X server running."
   end
 
   let get_secret ?expected_kind ?line_number ~with_comments ?(trim_new_line = false) secret_name output_mode =
@@ -375,12 +374,12 @@ Checking passage installation
       | [] -> prerr_endline "\n⚠️  WARNING: No registered recipient names found for your identity"
       | _ ->
         prerr_endline "\nRegistered recipient name(s):";
-        List.iter (fun (r : Age.recipient) -> Devkit.eprintfn "  - %s\n" r.name) recipients);
+        List.iter (fun (r : Age.recipient) -> eprintfn "  - %s\n" r.name) recipients);
       (match id_from_env with
-      | Some _ -> Devkit.eprintfn "Identity key path: %s (from PASSAGE_IDENTITY environment variable)\n" identity_path
-      | None -> Devkit.eprintfn "Identity key path: %s\n" identity_path);
+      | Some _ -> eprintfn "Identity key path: %s (from PASSAGE_IDENTITY environment variable)\n" identity_path
+      | None -> eprintfn "Identity key path: %s\n" identity_path);
 
-      Devkit.eprintfn "Public key: %s" own_key_str
+      eprintfn "Public key: %s" own_key_str
     with exn ->
       prerr_endline "\n❌ ERROR: Failed to read passage installation\n";
       Shell.die "Reason: %s" (Printexc.to_string exn)
@@ -398,7 +397,7 @@ Checking for folders without .keys file
     | [] -> prerr_endline "\nSUCCESS: secrets all have .keys in the immediate directory"
     | _ ->
       let () = print_endline "\nERROR: found paths with secrets but no .keys file:" in
-      let () = List.iter (fun p -> Printf.eprintf "- %s\n" (show_path p)) folders_without_keys_file in
+      let () = List.iter (fun p -> eprintfn "- %s" (show_path p)) folders_without_keys_file in
       let () = flush stderr in
       healthcheck_with_errors := true
 
@@ -429,13 +428,13 @@ Checking for validity of own secrets. Use -v flag to break down per secret
                     match Secret.Validation.validate secret_text with
                     | Ok kind ->
                       let () =
-                        verbose_eprintlf ~verbose "✅ %s [ valid %s ]" (show_name secret_name)
+                        Util.verbose_eprintlf ~verbose "✅ %s [ valid %s ]" (show_name secret_name)
                           (Secret.kind_to_string kind)
                       in
                       succ ok, invalid, fail
                     | Error (e, validation_error_type) ->
                       healthcheck_with_errors := true;
-                      let () = Printf.eprintf "❌ %s [ invalid format: %s ]\n" (show_name secret_name) e in
+                      let () = eprintfn "❌ %s [ invalid format: %s ]" (show_name secret_name) e in
                       let upgraded_secrets =
                         match upgrade_mode, validation_error_type with
                         | Upgrade, SingleLineLegacy ->
@@ -445,26 +444,23 @@ Checking for validity of own secrets. Use -v flag to break down per secret
                              let recipients = Util.Recipients.get_recipients_or_die secret_name in
                              Storage.Secrets.encrypt_exn ~verbose:false ~plaintext:upgraded_secret ~secret_name
                                recipients;
-                             Devkit.eprintfn "I: updated %s" (show_name secret_name);
+                             eprintfn "I: updated %s" (show_name secret_name);
                              1
                            with exn ->
-                             Printf.eprintf "E: encrypting %s failed: %s\n" (show_name secret_name)
-                               (Printexc.to_string exn);
+                             eprintfn "E: encrypting %s failed: %s" (show_name secret_name) (Printexc.to_string exn);
                              0)
                         | DryRun, SingleLineLegacy ->
-                          Devkit.eprintfn "I: would update %s" (show_name secret_name);
+                          eprintfn "I: would update %s" (show_name secret_name);
                           1
                         | NoUpgrade, _ | Upgrade, _ | DryRun, _ -> 0
                       in
                       ok + upgraded_secrets, succ (invalid - upgraded_secrets), fail
                   with _ ->
-                    let () = Printf.eprintf "🚨 %s [ WARNING: failed to decrypt ]\n" (show_name secret_name) in
+                    let () = eprintfn "🚨 %s [ WARNING: failed to decrypt ]" (show_name secret_name) in
                     ok, invalid, succ fail)
                 (0, 0, 0) sorted_secrets
             in
-            let () =
-              Printf.eprintf "\nI: %i valid secrets, %i invalid and %i with decryption issues\n" ok invalid fail
-            in
+            let () = eprintfn "\nI: %i valid secrets, %i invalid and %i with decryption issues" ok invalid fail in
             ())
         recipients_of_own_id
 
@@ -690,7 +686,9 @@ module Template_cmd = struct
       match target_file with
       | None -> print_string contents
       | Some target_file ->
-        Devkit.Files.save_as (Path.project target_file) ~mode:0o600 (fun oc -> Out_channel.output_string oc contents)
+        let target_file = Path.project target_file in
+        let flags = [ Open_wronly; Open_creat; Open_trunc; Open_binary ] in
+        Out_channel.(with_open_gen flags 0o600 target_file (fun oc -> output_string oc contents))
     with exn -> Shell.die ~exn "E: failed to substitute file"
 
   let target_file =

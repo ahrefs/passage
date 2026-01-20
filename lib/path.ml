@@ -1,4 +1,8 @@
-include Devkit.Fresh (String) ()
+type t = string
+
+let inject x = x
+let project x = x
+let inject_list = List.map inject
 
 let is_directory p = try Sys.is_directory (project p) with Sys_error _ -> false
 

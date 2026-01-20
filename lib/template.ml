@@ -19,9 +19,9 @@ let substitute_iden ?use_sudo node =
        let secret = Secret.Validation.parse_exn plaintext in
        Template_ast.Text secret.text
      with
-    | Failure s -> failwith ("unable to decrypt secret: " ^ s)
+    | Failure s -> Exn.die "unable to decrypt secret: %s" s
     | exn ->
-      let () = Printf.eprintf "E: could not decrypt secret %s\n" (Storage.Secret_name.project secret_name) in
+      let () = Util.eprintfn "E: could not decrypt secret %s" (Storage.Secret_name.project secret_name) in
       raise exn)
 
 let build_text_from_ast ast =
@@ -29,6 +29,6 @@ let build_text_from_ast ast =
     (fun node ->
       match node with
       | Template_ast.Text s -> s
-      | Template_ast.Iden secret_name -> Devkit.Exn.fail "found unsubstituted secret %s" secret_name)
+      | Template_ast.Iden secret_name -> failwith (Printf.sprintf "found unsubstituted secret %s" secret_name))
     ast
   |> String.concat ""

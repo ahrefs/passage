@@ -56,7 +56,7 @@ let get_valid_input_from_stdin_exn () =
     | Error e ->
       if is_TTY = false then Shell.die "%s" e
       else (
-        let () = Printf.printf "\nThis secret is in an invalid format: %s\n" e in
+        let () = Util.printfn "\nThis secret is in an invalid format: %s" e in
         if yesno "Edit again?" then input_and_validate_loop ~validate ~initial:input get_input else Error e)
   in
   input_and_validate_loop ~validate:Validation.validate_secret (fun ?initial:_ () -> In_channel.input_all stdin)
@@ -91,7 +91,10 @@ Are you sure you would like to continue?|}
       | Some p -> show_path p
       | None -> Filename.get_temp_dir_name ()
     in
-    Devkit.Control.with_open_out_temp_file ~temp_dir ~mode:[ Open_wronly; Open_creat; Open_excl ] f
+    let tmpfile, tmpfile_oc =
+      Filename.open_temp_file ~mode:[ Open_wronly; Open_creat; Open_excl ] ~temp_dir "" ".passage"
+    in
+    Fun.protect ~finally:(fun () -> try Sys.remove tmpfile with _ -> ()) (fun () -> f (tmpfile, tmpfile_oc))
 
   let rec edit_loop tmpfile =
     try
@@ -115,13 +118,14 @@ Are you sure you would like to continue?|}
         | false -> Error "Editor cancelled"
         | true ->
           let rec validate_and_edit () =
-            match validate @@ preprocess_content @@ Std.input_file tmpfile with
+            let content = In_channel.with_open_text tmpfile In_channel.input_all in
+            match validate @@ preprocess_content content with
             | Ok r -> r
             | Error e ->
             match is_TTY with
             | false -> Shell.die "%s" e
             | true ->
-              let () = Printf.printf "\n%s\n" e in
+              let () = Util.printfn "\n%s" e in
               (match yesno "Edit again?" with
               | false -> Shell.die "%s" e
               | true ->
