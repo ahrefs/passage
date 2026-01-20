@@ -105,7 +105,7 @@ module Validation = struct
       | [ secret ] when String.trim secret <> "" -> Ok Singleline
       | _ -> Error ("invalid format", InvalidFormat))
 
-  (**
+  (** {v
  Multiline secret with comments format:
      <empty line>
      possibly several lines of comments without empty lines
@@ -128,7 +128,7 @@ module Validation = struct
  Single line secret with commments legacy format [DEPRECATED]:
      secret one line
      comments until the end of file
- *)
+      v} *)
   let parse_exn plaintext_content =
     if String.trim plaintext_content = "" then failwith "empty secrets are not allowed";
     let lines = String.split_on_char '\n' plaintext_content in

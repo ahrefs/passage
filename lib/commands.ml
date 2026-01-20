@@ -142,7 +142,7 @@ module Recipients = struct
       let recipients_file_path = Storage.Secrets.get_recipients_file_path secret_path in
       let (_ : Path.t) = Path.ensure_parent recipients_file_path in
       Out_channel.with_open_text (show_path recipients_file_path) (fun oc ->
-          List.iter (fun line -> Printf.fprintf oc "%s\n" line) recipients_names_with_root_group)
+        List.iter (fun line -> Printf.fprintf oc "%s\n" line) recipients_names_with_root_group)
 
   let rewrite_recipients_file ?use_sudo secret_name new_recipients_list =
     let secret_path = path_of_secret_name secret_name in
@@ -153,7 +153,7 @@ module Recipients = struct
     let deduplicated_recipients = List.sort_uniq String.compare new_recipients_list in
     let () =
       Out_channel.with_open_text (show_path secret_recipients_file) (fun oc ->
-          List.iter (fun line -> Printf.fprintf oc "%s\n" line) deduplicated_recipients)
+        List.iter (fun line -> Printf.fprintf oc "%s\n" line) deduplicated_recipients)
     in
     let sorted_updated_recipients_names = Storage.Secrets.get_recipients_names secret_path in
     if sorted_base_recipients <> sorted_updated_recipients_names then (
@@ -168,43 +168,42 @@ module Recipients = struct
     let secret_path = path_of_secret_name secret_name in
     Util.Secret.check_path_exists_or_die secret_name secret_path;
     Invariant.run_if_recipient ~op_string:"add recipients" ~path:secret_path ~f:(fun () ->
-        let () =
-          match Validation.validate_recipients_for_commands recipients_to_add with
-          | Error msg -> die "%s" msg
-          | Ok () -> ()
-        in
-        let current_recipients = Storage.Secrets.get_recipients_names secret_path in
-        let new_recipients = List.sort_uniq String.compare (current_recipients @ recipients_to_add) in
-        match List.equal String.equal current_recipients new_recipients with
-        | true -> prerr_endline "I: no changes made - all specified recipients are already present"
-        | false ->
-          let () = rewrite_recipients_file ?use_sudo secret_name new_recipients in
-          let added_count = List.length new_recipients - List.length current_recipients in
-          eprintfn "I: added %d recipient%s" added_count (if added_count = 1 then "" else "s"))
+      let () =
+        match Validation.validate_recipients_for_commands recipients_to_add with
+        | Error msg -> die "%s" msg
+        | Ok () -> ()
+      in
+      let current_recipients = Storage.Secrets.get_recipients_names secret_path in
+      let new_recipients = List.sort_uniq String.compare (current_recipients @ recipients_to_add) in
+      match List.equal String.equal current_recipients new_recipients with
+      | true -> prerr_endline "I: no changes made - all specified recipients are already present"
+      | false ->
+        let () = rewrite_recipients_file ?use_sudo secret_name new_recipients in
+        let added_count = List.length new_recipients - List.length current_recipients in
+        eprintfn "I: added %d recipient%s" added_count (if added_count = 1 then "" else "s"))
 
   let remove_recipients_from_secret ?use_sudo secret_name recipients_to_remove =
     let secret_path = path_of_secret_name secret_name in
     Util.Secret.check_path_exists_or_die secret_name secret_path;
     Invariant.run_if_recipient ~op_string:"remove recipients" ~path:secret_path ~f:(fun () ->
-        let current_recipients = Storage.Secrets.get_recipients_names secret_path in
-        let new_recipients = List.filter (fun r -> not (List.mem r recipients_to_remove)) current_recipients in
-        (* Check for non-existent recipients to warn about *)
-        let non_existent = List.filter (fun r -> not (List.mem r current_recipients)) recipients_to_remove in
-        if new_recipients = [] then die "E: cannot remove all recipients - at least one recipient must remain"
-        else if current_recipients = new_recipients then (
-          match non_existent with
-          | [] -> prerr_endline "I: no changes made - specified recipients were already absent"
-          | _ -> die "E: recipients not found: %s" (String.concat ", " non_existent))
-        else (
-          (* Show warnings for non-existent recipients before proceeding *)
-          let () =
-            if non_existent <> [] then
-              eprintfn "W: recipients not found to remove: %s" (String.concat ", " non_existent)
-            else ()
-          in
-          let () = rewrite_recipients_file ?use_sudo secret_name new_recipients in
-          let removed_count = List.length current_recipients - List.length new_recipients in
-          eprintfn "I: removed %d recipient%s" removed_count (if removed_count = 1 then "" else "s")))
+      let current_recipients = Storage.Secrets.get_recipients_names secret_path in
+      let new_recipients = List.filter (fun r -> not (List.mem r recipients_to_remove)) current_recipients in
+      (* Check for non-existent recipients to warn about *)
+      let non_existent = List.filter (fun r -> not (List.mem r current_recipients)) recipients_to_remove in
+      if new_recipients = [] then die "E: cannot remove all recipients - at least one recipient must remain"
+      else if current_recipients = new_recipients then (
+        match non_existent with
+        | [] -> prerr_endline "I: no changes made - specified recipients were already absent"
+        | _ -> die "E: recipients not found: %s" (String.concat ", " non_existent))
+      else (
+        (* Show warnings for non-existent recipients before proceeding *)
+        let () =
+          if non_existent <> [] then eprintfn "W: recipients not found to remove: %s" (String.concat ", " non_existent)
+          else ()
+        in
+        let () = rewrite_recipients_file ?use_sudo secret_name new_recipients in
+        let removed_count = List.length current_recipients - List.length new_recipients in
+        eprintfn "I: removed %d recipient%s" removed_count (if removed_count = 1 then "" else "s")))
 
   let list_recipient_secrets ?use_sudo ?(verbose = false) recipients_names =
     if recipients_names = [] then die "E: Must specify at least one recipient name";
@@ -294,31 +293,31 @@ module Refresh = struct
       List.fold_left
         (fun acc path_or_recip ->
           (match Age.is_group_recipient path_or_recip with
-          | true ->
-            (* we need to clarify if the recipient is a group or a recipient, since we use the same syntax for both *)
-            let recipient =
-              let r =
-                if String.starts_with ~prefix:"@" path_or_recip then
-                  String.sub path_or_recip 1 (String.length path_or_recip - 1)
-                else path_or_recip
+            | true ->
+              (* we need to clarify if the recipient is a group or a recipient, since we use the same syntax for both *)
+              let recipient =
+                let r =
+                  if String.starts_with ~prefix:"@" path_or_recip then
+                    String.sub path_or_recip 1 (String.length path_or_recip - 1)
+                  else path_or_recip
+                in
+                match List.mem r (Storage.Secrets.all_groups_names ()), r = "everyone" with
+                | false, false -> r
+                | _ -> path_or_recip
               in
-              match List.mem r (Storage.Secrets.all_groups_names ()), r = "everyone" with
-              | false, false -> r
-              | _ -> path_or_recip
-            in
-            (match Storage.Secrets.get_secrets_for_recipient recipient with
-            | [] -> die "E: no secrets found for recipient %s" path_or_recip
-            | secrets -> secrets)
-          | false ->
-            let path =
-              try Path.build_rel_path path_or_recip with Failure s -> die "E: invalid path %s: %s" path_or_recip s
-            in
-            (match Storage.Secrets.get_secrets_tree path with
-            | _ :: _ as secrets -> secrets
-            | [] ->
-            match Storage.Secrets.secret_exists_at path with
-            | true -> [ secret_name_of_path path ]
-            | false -> die "E: no secrets at %s" path_or_recip))
+              (match Storage.Secrets.get_secrets_for_recipient recipient with
+              | [] -> die "E: no secrets found for recipient %s" path_or_recip
+              | secrets -> secrets)
+            | false ->
+              let path =
+                try Path.build_rel_path path_or_recip with Failure s -> die "E: invalid path %s: %s" path_or_recip s
+              in
+              (match Storage.Secrets.get_secrets_tree path with
+              | _ :: _ as secrets -> secrets
+              | [] ->
+              match Storage.Secrets.secret_exists_at path with
+              | true -> [ secret_name_of_path path ]
+              | false -> die "E: no secrets at %s" path_or_recip))
           @ acc)
         [] paths
     in
@@ -351,15 +350,15 @@ module Realpath = struct
   let realpath paths =
     paths
     |> List.map (fun path ->
-           let abs_path = Path.abs path in
-           if Storage.Secrets.secret_exists_at path then (
-             let secret_name = secret_name_of_path path in
-             Ok (show_path (Path.abs (Storage.Secrets.agefile_of_name secret_name))))
-           else if Path.is_directory abs_path then (
-             let str = show_path abs_path in
-             if Path.is_dot (Path.build_rel_path (show_path path)) then Ok (Storage.Secrets.get_secrets_dir () ^ "/")
-             else Ok (str ^ if String.ends_with ~suffix:"/" str then "" else "/"))
-           else Error (sprintf "real path of secret/folder %S not found" (show_path path)))
+      let abs_path = Path.abs path in
+      if Storage.Secrets.secret_exists_at path then (
+        let secret_name = secret_name_of_path path in
+        Ok (show_path (Path.abs (Storage.Secrets.agefile_of_name secret_name))))
+      else if Path.is_directory abs_path then (
+        let str = show_path abs_path in
+        if Path.is_dot (Path.build_rel_path (show_path path)) then Ok (Storage.Secrets.get_secrets_dir () ^ "/")
+        else Ok (str ^ if String.ends_with ~suffix:"/" str then "" else "/"))
+      else Error (sprintf "real path of secret/folder %S not found" (show_path path)))
 end
 
 module Rm = struct
@@ -487,19 +486,19 @@ module Create = struct
   let add ?use_sudo ~comments secret_name secret_text =
     base_check ?use_sudo secret_name;
     Edit.edit_secret ?use_sudo secret_name ~self_fallback:true ~get_updated_secret:(fun _ ->
-        let parsed_secret = Secret.Validation.parse_exn secret_text in
-        let comments =
-          match comments, parsed_secret.comments with
-          | Some comment, None | None, Some comment -> Some comment
-          | None, None -> None
-          | Some _, Some _ ->
-            die
-              "E: secret text already contains comments. Either use the secret text with comments or use the --comment \
-               flag."
-        in
-        match Validation.validate_comments (Option.value ~default:"" comments) with
-        | Error e -> die "E: invalid comment format: %s" e
-        | Ok comments -> Ok (Util.Secret.reconstruct_secret ~comments parsed_secret))
+      let parsed_secret = Secret.Validation.parse_exn secret_text in
+      let comments =
+        match comments, parsed_secret.comments with
+        | Some comment, None | None, Some comment -> Some comment
+        | None, None -> None
+        | Some _, Some _ ->
+          die
+            "E: secret text already contains comments. Either use the secret text with comments or use the --comment \
+             flag."
+      in
+      match Validation.validate_comments (Option.value ~default:"" comments) with
+      | Error e -> die "E: invalid comment format: %s" e
+      | Ok comments -> Ok (Util.Secret.reconstruct_secret ~comments parsed_secret))
 
   let bare ?use_sudo ~f secret_name =
     base_check ?use_sudo secret_name;

@@ -1,11 +1,8 @@
 open Printf
 open Printexc
 
-(**
-  The original backtrace is captured via `Printexc.get_raw_backtrace ()`.
-  However, note that this backtrace might not correspond to the provided `exn`
-  if another exception was raised before `fail` is called.
-*)
+(** The original backtrace is captured via `Printexc.get_raw_backtrace ()`. However, note that this backtrace might not
+    correspond to the provided `exn` if another exception was raised before `fail` is called. *)
 let die ?exn fmt =
   let to_string exn =
     match exn with

@@ -5,15 +5,15 @@ let config_lines filename =
   if not (Sys.file_exists filename) then []
   else
     In_channel.with_open_text filename (fun ic ->
-        let rec read_lines acc =
-          match In_channel.input_line ic with
-          | None -> List.rev acc
-          | Some line -> read_lines (line :: acc)
-        in
-        read_lines []
-        |> List.filter_map (fun line ->
-               let trimmed = String.trim line in
-               if trimmed = "" || String.starts_with ~prefix:"#" trimmed then None else Some trimmed))
+      let rec read_lines acc =
+        match In_channel.input_line ic with
+        | None -> List.rev acc
+        | Some line -> read_lines (line :: acc)
+      in
+      read_lines []
+      |> List.filter_map (fun line ->
+        let trimmed = String.trim line in
+        if trimmed = "" || String.starts_with ~prefix:"#" trimmed then None else Some trimmed))
 
 module Secret_name = struct
   type t = string
@@ -305,8 +305,8 @@ module Secrets = struct
   let recipients_of_own_id ?use_sudo () =
     Keys.all_recipient_names ()
     |> List.filter_map (fun name ->
-           let keys = Keys.keys_of_recipient name in
-           match List.mem (get_own_key ?use_sudo ()) keys with
-           | true -> Some { Age.name; keys }
-           | false -> None)
+      let keys = Keys.keys_of_recipient name in
+      match List.mem (get_own_key ?use_sudo ()) keys with
+      | true -> Some { Age.name; keys }
+      | false -> None)
 end

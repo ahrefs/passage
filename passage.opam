@@ -19,7 +19,7 @@ depends: [
   "fpath"
   "menhir" {>= "20231231"}
   "ppx_expect"
-  "ocamlformat" {with-dev-setup & = "0.26.2"}
+  "ocamlformat" {with-dev-setup & = "0.28.1"}
   "qrc"
   "re"
   "sedlex"

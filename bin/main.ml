@@ -103,8 +103,8 @@ module Add_who = struct
     let term =
       Term.(
         const (fun secret_name recipients_to_add ->
-            try Commands.Recipients.add_recipients_to_secret secret_name recipients_to_add
-            with Failure s -> Shell.die "%s" s)
+          try Commands.Recipients.add_recipients_to_secret secret_name recipients_to_add
+          with Failure s -> Shell.die "%s" s)
         $ Flags.secret_name
         $ recipient_names)
     in
@@ -122,8 +122,8 @@ module Rm_who = struct
     let term =
       Term.(
         const (fun secret_name recipients_to_remove ->
-            try Commands.Recipients.remove_recipients_from_secret secret_name recipients_to_remove
-            with Failure s -> Shell.die "%s" s)
+          try Commands.Recipients.remove_recipients_from_secret secret_name recipients_to_remove
+          with Failure s -> Shell.die "%s" s)
         $ Flags.secret_name
         $ recipient_names)
     in
@@ -161,11 +161,10 @@ module Edit_cmd = struct
         ~f:(fun () ->
           Commands.Edit.edit_secret secret_name ~allow_retry:Retry.encrypt_with_retry
             ~get_updated_secret:(fun initial ->
-              let initial_content =
-                Option.map (fun i -> i ^ Secret.format_explainer) initial
-                |> Option.value ~default:Secret.format_explainer
-              in
-              Editor.edit_with_validation ~initial:initial_content ~validate:Validation.validate_secret ()))
+            let initial_content =
+              Option.map (fun i -> i ^ Secret.format_explainer) initial |> Option.value ~default:Secret.format_explainer
+            in
+            Editor.edit_with_validation ~initial:initial_content ~validate:Validation.validate_secret ()))
     with Failure s -> Shell.die "%s" s
 
   let edit =
@@ -201,16 +200,16 @@ module Edit_comments = struct
       check_exists_or_die secret_name;
       let path = Storage.Secrets.(to_path secret_name) in
       Invariant.run_if_recipient ~op_string:"edit comments" ~path ~f:(fun () ->
-          let parsed_secret = decrypt_and_parse secret_name in
-          let new_comments = get_comments ?initial:parsed_secret.comments () in
-          match parsed_secret.comments, new_comments = "" with
-          | None, true -> prerr_endline "I: comments unchanged"
-          | Some old, false when old = new_comments -> prerr_endline "I: comments unchanged"
-          | _ ->
-            let updated_secret = reconstruct_secret ~comments:new_comments parsed_secret in
-            let secret_recipients = Util.Recipients.get_recipients_or_die secret_name in
-            (try Retry.encrypt_with_retry ~plaintext:updated_secret ~secret_name secret_recipients
-             with exn -> Shell.die ~exn "E: encrypting %s failed" (show_name secret_name)))
+        let parsed_secret = decrypt_and_parse secret_name in
+        let new_comments = get_comments ?initial:parsed_secret.comments () in
+        match parsed_secret.comments, new_comments = "" with
+        | None, true -> prerr_endline "I: comments unchanged"
+        | Some old, false when old = new_comments -> prerr_endline "I: comments unchanged"
+        | _ ->
+          let updated_secret = reconstruct_secret ~comments:new_comments parsed_secret in
+          let secret_recipients = Util.Recipients.get_recipients_or_die secret_name in
+          (try Retry.encrypt_with_retry ~plaintext:updated_secret ~secret_name secret_recipients
+           with exn -> Shell.die ~exn "E: encrypting %s failed" (show_name secret_name)))
     with Failure s -> Shell.die "%s" s
 
   let edit_comments_cmd =
@@ -515,8 +514,8 @@ module New = struct
         let () =
           Commands.Edit.edit_secret ~self_fallback:true secret_name ~allow_retry:Retry.encrypt_with_retry
             ~get_updated_secret:(fun initial ->
-              let initial_content = Option.value ~default:Secret.format_explainer initial in
-              Editor.edit_with_validation ~initial:initial_content ~validate:Validation.validate_secret ())
+            let initial_content = Option.value ~default:Secret.format_explainer initial in
+            Editor.edit_with_validation ~initial:initial_content ~validate:Validation.validate_secret ())
         in
         let original_recipients = Storage.Secrets.(get_recipients_from_path_exn @@ to_path secret_name) in
         Commands.Edit.show_recipients_notice_if_true (original_recipients = []);
@@ -541,11 +540,11 @@ module Realpath = struct
     let term =
       Term.(
         const (fun paths ->
-            Commands.Realpath.realpath paths
-            |> List.iter (fun r ->
-                   match r with
-                   | Ok path -> print_endline path
-                   | Error e -> Printf.eprintf "W: %s\n" e))
+          Commands.Realpath.realpath paths
+          |> List.iter (fun r ->
+            match r with
+            | Ok path -> print_endline path
+            | Error e -> Printf.eprintf "W: %s\n" e))
         $ Flags.secrets_paths)
     in
     Cmd.v info term
@@ -561,7 +560,7 @@ module Refresh = struct
     let term =
       Term.(
         const (fun verbose paths ->
-            try Commands.Refresh.refresh_secrets ~verbose paths with Failure s -> Shell.die "%s" s)
+          try Commands.Refresh.refresh_secrets ~verbose paths with Failure s -> Shell.die "%s" s)
         $ Flags.verbose
         $ Flags.secrets_paths_or_recipients)
     in
@@ -637,9 +636,8 @@ module Search = struct
     let term =
       Term.(
         const (fun verbose pattern secrets_path ->
-            let _, compiled_pattern = pattern in
-            try Commands.Search.search_secrets ~verbose compiled_pattern secrets_path
-            with Failure s -> Shell.die "%s" s)
+          let _, compiled_pattern = pattern in
+          try Commands.Search.search_secrets ~verbose compiled_pattern secrets_path with Failure s -> Shell.die "%s" s)
         $ Flags.verbose
         $ pattern
         $ secrets_path)
@@ -659,7 +657,7 @@ module Show = struct
     let term =
       Term.(
         const (fun path ->
-            try Printf.printf "%s" @@ Commands.Show.list_secrets_tree path with Failure s -> Shell.die "%s" s)
+          try Printf.printf "%s" @@ Commands.Show.list_secrets_tree path with Failure s -> Shell.die "%s" s)
         $ Flags.secrets_path)
     in
     Cmd.v info term
@@ -713,10 +711,10 @@ module Template_secrets = struct
     let term =
       Term.(
         const (fun template_file ->
-            try
-              let ss = Commands.Template.list_template_secrets template_file in
-              List.iter print_endline ss
-            with Failure s -> Shell.die "%s" s)
+          try
+            let ss = Commands.Template.list_template_secrets template_file in
+            List.iter print_endline ss
+          with Failure s -> Shell.die "%s" s)
         $ Flags.template_file)
     in
     Cmd.v info term
@@ -733,7 +731,7 @@ module What = struct
     let term =
       Term.(
         const (fun names verbose ->
-            try Commands.Recipients.list_recipient_secrets ~verbose names with Failure s -> Shell.die "%s" s)
+          try Commands.Recipients.list_recipient_secrets ~verbose names with Failure s -> Shell.die "%s" s)
         $ recipient_name
         $ Flags.verbose)
     in
@@ -764,7 +762,7 @@ module Who = struct
     let term =
       Term.(
         const (fun secrets_path expand_groups ->
-            try Commands.Recipients.list_recipients secrets_path expand_groups with Failure s -> Shell.die "%s" s)
+          try Commands.Recipients.list_recipients secrets_path expand_groups with Failure s -> Shell.die "%s" s)
         $ Flags.secrets_path
         $ expand_groups)
     in
