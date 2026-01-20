@@ -11,6 +11,8 @@ type output_mode =
   | QrCode
   | Stdout
 
+let eprintfn = Util.eprintfn
+
 module Converters = struct
   let secret_arg =
     let parse secret_name = try Ok (Storage.Secrets.build_secret_name secret_name) with Failure s -> Error (`Msg s) in
@@ -232,7 +234,7 @@ module Get = struct
       let read_clipboard () = Shell.xclip_read_clipboard ?x_selection () in
       let copy_to_clipboard s =
         try Shell.xclip_copy_to_clipboard ?x_selection s
-        with exn -> Base.die ~exn "E: could not copy data to the clipboard"
+        with exn -> Exn.die ~exn "E: could not copy data to the clipboard"
       in
       let restore_clipboard original_content =
         let () = Unix.sleep clip_time in
@@ -274,7 +276,7 @@ module Get = struct
     let save_to_clipboard ~secret_name ~secret =
       match save_to_clipboard_exn ~secret with
       | `Child -> ()
-      | `Forked _ -> Base.eprintfn "Copied %s to clipboard. Will clear in %d seconds." (show_name secret_name) clip_time
+      | `Forked _ -> eprintfn "Copied %s to clipboard. Will clear in %d seconds." (show_name secret_name) clip_time
       | exception exn -> Shell.die ~exn "E: failed to save to clipboard! Check if you have an X server running."
   end
 
@@ -374,12 +376,12 @@ Checking passage installation
       | [] -> prerr_endline "\n⚠️  WARNING: No registered recipient names found for your identity"
       | _ ->
         prerr_endline "\nRegistered recipient name(s):";
-        List.iter (fun (r : Age.recipient) -> Base.eprintfn "  - %s\n" r.name) recipients);
+        List.iter (fun (r : Age.recipient) -> eprintfn "  - %s\n" r.name) recipients);
       (match id_from_env with
-      | Some _ -> Base.eprintfn "Identity key path: %s (from PASSAGE_IDENTITY environment variable)\n" identity_path
-      | None -> Base.eprintfn "Identity key path: %s\n" identity_path);
+      | Some _ -> eprintfn "Identity key path: %s (from PASSAGE_IDENTITY environment variable)\n" identity_path
+      | None -> eprintfn "Identity key path: %s\n" identity_path);
 
-      Base.eprintfn "Public key: %s" own_key_str
+      eprintfn "Public key: %s" own_key_str
     with exn ->
       prerr_endline "\n❌ ERROR: Failed to read passage installation\n";
       Shell.die "Reason: %s" (Printexc.to_string exn)
@@ -397,7 +399,7 @@ Checking for folders without .keys file
     | [] -> prerr_endline "\nSUCCESS: secrets all have .keys in the immediate directory"
     | _ ->
       let () = print_endline "\nERROR: found paths with secrets but no .keys file:" in
-      let () = List.iter (fun p -> Base.eprintfn "- %s" (show_path p)) folders_without_keys_file in
+      let () = List.iter (fun p -> eprintfn "- %s" (show_path p)) folders_without_keys_file in
       let () = flush stderr in
       healthcheck_with_errors := true
 
@@ -428,13 +430,13 @@ Checking for validity of own secrets. Use -v flag to break down per secret
                     match Secret.Validation.validate secret_text with
                     | Ok kind ->
                       let () =
-                        Base.verbose_eprintlf ~verbose "✅ %s [ valid %s ]" (show_name secret_name)
+                        Util.verbose_eprintlf ~verbose "✅ %s [ valid %s ]" (show_name secret_name)
                           (Secret.kind_to_string kind)
                       in
                       succ ok, invalid, fail
                     | Error (e, validation_error_type) ->
                       healthcheck_with_errors := true;
-                      let () = Base.eprintfn "❌ %s [ invalid format: %s ]" (show_name secret_name) e in
+                      let () = eprintfn "❌ %s [ invalid format: %s ]" (show_name secret_name) e in
                       let upgraded_secrets =
                         match upgrade_mode, validation_error_type with
                         | Upgrade, SingleLineLegacy ->
@@ -444,24 +446,23 @@ Checking for validity of own secrets. Use -v flag to break down per secret
                              let recipients = Util.Recipients.get_recipients_or_die secret_name in
                              Storage.Secrets.encrypt_exn ~verbose:false ~plaintext:upgraded_secret ~secret_name
                                recipients;
-                             Base.eprintfn "I: updated %s" (show_name secret_name);
+                             eprintfn "I: updated %s" (show_name secret_name);
                              1
                            with exn ->
-                             Base.eprintfn "E: encrypting %s failed: %s" (show_name secret_name)
-                               (Printexc.to_string exn);
+                             eprintfn "E: encrypting %s failed: %s" (show_name secret_name) (Printexc.to_string exn);
                              0)
                         | DryRun, SingleLineLegacy ->
-                          Base.eprintfn "I: would update %s" (show_name secret_name);
+                          eprintfn "I: would update %s" (show_name secret_name);
                           1
                         | NoUpgrade, _ | Upgrade, _ | DryRun, _ -> 0
                       in
                       ok + upgraded_secrets, succ (invalid - upgraded_secrets), fail
                   with _ ->
-                    let () = Base.eprintfn "🚨 %s [ WARNING: failed to decrypt ]" (show_name secret_name) in
+                    let () = eprintfn "🚨 %s [ WARNING: failed to decrypt ]" (show_name secret_name) in
                     ok, invalid, succ fail)
                 (0, 0, 0) sorted_secrets
             in
-            let () = Base.eprintfn "\nI: %i valid secrets, %i invalid and %i with decryption issues" ok invalid fail in
+            let () = eprintfn "\nI: %i valid secrets, %i invalid and %i with decryption issues" ok invalid fail in
             ())
         recipients_of_own_id
 

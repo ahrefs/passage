@@ -1,3 +1,8 @@
+let printfn fmt = Printf.ksprintf print_endline fmt
+let eprintfn fmt = Printf.ksprintf prerr_endline fmt
+
+let verbose_eprintlf ?(verbose = false) fmt = Printf.ksprintf (fun s -> if verbose then prerr_endline s else ()) fmt
+
 (** Display and conversion functions for paths and secret names *)
 module Show = struct
   let show_path p = Path.project p
@@ -18,7 +23,7 @@ module Recipients = struct
     let recipients = Storage.Secrets.(get_recipients_from_path_exn @@ to_path secret_name) in
     match recipients with
     | [] ->
-      Base.die
+      Exn.die
         {|E: No recipients found (use "passage {create,new} folder/new_secret_name" to use recipients associated with $PASSAGE_IDENTITY instead)|}
         (show_name secret_name)
     | _ -> recipients
@@ -40,25 +45,25 @@ module Secret = struct
   (** Check if a secret exists, die with hint about create/new if not *)
   let check_exists_or_die secret_name =
     match Storage.Secrets.secret_exists secret_name with
-    | false -> Base.die "E: no such secret: %s.  Use \"new\" or \"create\" for new secrets." (show_name secret_name)
+    | false -> Exn.die "E: no such secret: %s.  Use \"new\" or \"create\" for new secrets." (show_name secret_name)
     | true -> ()
 
   (** Check if a secret exists at path, die with standard error if not *)
   let check_path_exists_or_die secret_name path =
     match Storage.Secrets.secret_exists_at path with
-    | false -> Base.die "E: no such secret: %s" (show_name secret_name)
+    | false -> Exn.die "E: no such secret: %s" (show_name secret_name)
     | true -> ()
 
   (** Decrypt secret with silent stderr - common pattern *)
   let decrypt_silently ?use_sudo secret_name = Storage.Secrets.decrypt_exn ?use_sudo ~silence_stderr:true secret_name
 
   (** Common recipient error messages *)
-  let die_no_recipients_found path = Base.die "E: no recipients found for %s" (show_path path)
+  let die_no_recipients_found path = Exn.die "E: no recipients found for %s" (show_path path)
 
   let die_failed_get_recipients ?exn msg =
     match exn with
-    | Some e -> Base.die ~exn:e "E: failed to get recipients"
-    | None -> Base.die "E: failed to get recipients: %s" msg
+    | Some e -> Exn.die ~exn:e "E: failed to get recipients"
+    | None -> Exn.die "E: failed to get recipients: %s" msg
 
   (** Create a secret with new text but keeping existing secret's comments *)
   let reconstruct_with_new_text ~is_singleline ~new_text ~existing_comments =

@@ -23,8 +23,7 @@
  (description "Passage - used to store and manage access to shared secrets")
  (depends
   bos
-  (cmdliner
-   (< 2.0.0))
+  cmdliner
   (ocaml
    (>= 4.14))
   conf-age

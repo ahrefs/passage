@@ -1,3 +1,7 @@
+val printfn : ('a, unit, string, unit) format4 -> 'a
+val eprintfn : ('a, unit, string, unit) format4 -> 'a
+val verbose_eprintlf : ?verbose:bool -> ('a, unit, string, unit) format4 -> 'a
+
 module Show : sig
   val show_path : Path.t -> string
   val show_name : Storage.Secret_name.t -> string
