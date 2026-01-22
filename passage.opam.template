@@ -1,3 +1,16 @@
+build: [
+  ["dune" "subst"] {dev}
+  [
+    "dune"
+    "build"
+    "-p"
+    name
+    "-j"
+    jobs
+    "@install"
+    "@doc" {with-doc}
+  ]
+]
 available: os != "win32" & os != "macos"
 x-maintenance-intent: ["(latest)"]
 x-ci-accept-failures: [
@@ -9,6 +22,8 @@ x-ci-accept-failures: [
   "fedora-41"
   "fedora-42"
   "fedora-43"
+  "freebsd-14.3"
   "opensuse-15.6"
+  "opensuse-16.0"
   "opensuse-tumbleweed"
 ]

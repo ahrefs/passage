@@ -39,5 +39,6 @@
     :with-dev-setup
     (= 0.28.1)))
   qrc
-  re
+  (re
+   (>= 1.14.0))
   sedlex))
