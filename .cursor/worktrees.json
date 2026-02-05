@@ -1,0 +1,5 @@
+{
+  "setup-worktree": [
+    "export ORIGINAL_SWITCH_NAME=$(cd $ROOT_WORKTREE_PATH && opam switch show) && opam sw link $ORIGINAL_SWITCH_NAME"
+  ]
+}
