@@ -328,8 +328,13 @@ end
 module Template = struct
   open Template
   let substitute ~template =
-    let substituted_ast = List.map substitute_iden template in
-    build_text_from_ast substituted_ast
+    match substitute_all template with
+    | Ok substituted_ast -> build_text_from_ast substituted_ast
+    | Error failures ->
+      let n = List.length failures in
+      eprintfn "E: failed to decrypt %d %s:" n (if n = 1 then "secret" else "secrets");
+      List.iter (fun (name, msg) -> eprintfn "  - %s: %s" name msg) failures;
+      exit 1
 
   let substitute_file ~template_file =
     let template = parse_file template_file in

@@ -63,17 +63,21 @@ Should fail - invalid template file
 
 Should fail - no identity file
   $ PASSAGE_IDENTITY=dfsd.key passage template $PASSAGE_DIR/templates/multiple_secrets.txt
-  E: failed to substitute file : Failure("unable to decrypt secret: no identity file found (dfsd.key). Is passage setup? Try 'passage init'.")
+  E: failed to decrypt 2 secrets:
+    - multiple_secrets_1: unable to decrypt secret: no identity file found (dfsd.key). Is passage setup? Try 'passage init'.
+    - multiple_secrets_2: unable to decrypt secret: no identity file found (dfsd.key). Is passage setup? Try 'passage init'.
   [1]
 
 Should fail - no identity file
   $ PASSAGE_IDENTITY=poppy.pop.key passage template $PASSAGE_DIR/templates/multiple_secrets.txt
-  E: failed to substitute file : Failure("unable to decrypt secret: age --decrypt --identity '$TESTCASE_ROOT/poppy.pop.key' : exit code 1")
+  E: failed to decrypt 2 secrets:
+    - multiple_secrets_1: unable to decrypt secret: age --decrypt --identity '$TESTCASE_ROOT/poppy.pop.key' : exit code 1
+    - multiple_secrets_2: unable to decrypt secret: age --decrypt --identity '$TESTCASE_ROOT/poppy.pop.key' : exit code 1
   [1]
 
 Should fail - unable to decrypt a secret
-  $ passage template $PASSAGE_DIR/templates/inaccessible_secret.txt $TARGET 2>&1 | grep -m 1 "^E: could not"
-  E: could not decrypt secret 01/00/secret3
+  $ passage template $PASSAGE_DIR/templates/inaccessible_secret.txt $TARGET 2>&1 | grep -m 1 "^E: failed to decrypt"
+  E: failed to decrypt 2 secrets:
 
 Should succeed - path is normalized
   $ echo "secret" | passage create 00/secret

@@ -9,20 +9,31 @@ let parse_file file =
   let s = In_channel.input_all ic in
   parse s
 
-let substitute_iden ?use_sudo node =
+let try_substitute_iden ?use_sudo node =
   match node with
-  | Template_ast.Text _ -> node
+  | Template_ast.Text _ -> Ok node
   | Template_ast.Iden name ->
     let secret_name = Storage.Secret_name.inject name in
     (try
        let plaintext = Util.Secret.decrypt_silently ?use_sudo secret_name in
        let secret = Secret.Validation.parse_exn plaintext in
-       Template_ast.Text secret.text
+       Ok (Template_ast.Text secret.text)
      with
-    | Failure s -> Exn.die "unable to decrypt secret: %s" s
-    | exn ->
-      let () = Util.eprintfn "E: could not decrypt secret %s" (Storage.Secret_name.project secret_name) in
-      raise exn)
+    | Failure s -> Error (name, Printf.sprintf "unable to decrypt secret: %s" s)
+    | exn -> Error (name, Printf.sprintf "could not decrypt secret: %s" (Printexc.to_string exn)))
+
+let substitute_all ?use_sudo ast =
+  let results = List.map (try_substitute_iden ?use_sudo) ast in
+  let successes, failures =
+    List.partition_map
+      (function
+        | Ok node -> Left node
+        | Error (name, msg) -> Right (name, msg))
+      results
+  in
+  match failures with
+  | [] -> Ok successes
+  | failures -> Error failures
 
 let build_text_from_ast ast =
   List.map
