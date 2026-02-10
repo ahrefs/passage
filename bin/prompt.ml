@@ -93,7 +93,11 @@ Are you sure you would like to continue?|}
     let tmpfile, tmpfile_oc =
       Filename.open_temp_file ~mode:[ Open_wronly; Open_creat; Open_excl ] ~temp_dir "" ".passage"
     in
-    Fun.protect ~finally:(fun () -> try Sys.remove tmpfile with _ -> ()) (fun () -> f (tmpfile, tmpfile_oc))
+    Fun.protect
+      ~finally:(fun () ->
+        Stdlib.close_out_noerr tmpfile_oc;
+        try Sys.remove tmpfile with _ -> ())
+      (fun () -> f (tmpfile, tmpfile_oc))
 
   let rec edit_loop tmpfile =
     try
