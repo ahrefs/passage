@@ -2,6 +2,15 @@ val printfn : ('a, unit, string, unit) format4 -> 'a
 val eprintfn : ('a, unit, string, unit) format4 -> 'a
 val verbose_eprintlf : ?verbose:bool -> ('a, unit, string, unit) format4 -> 'a
 
+(** {!Out_channel.with_open_bin} protected with atomic rename.
+
+    [save_as path f] is similar to {!Out_channel.with_open_bin} except that writing is done to a temporary file that
+    will be renamed to [path] after [f] has succesfully terminated. Therefore this guarantee that either [filename] will
+    not be modified or will contain whatever [f] was writing to it as a side-effect.
+
+    Based on Devkit's [Files.save_as]. *)
+val save_as : ?mode:int -> path:string -> (out_channel -> unit) -> unit
+
 module Show : sig
   val show_path : Path.t -> string
   val show_name : Storage.Secret_name.t -> string

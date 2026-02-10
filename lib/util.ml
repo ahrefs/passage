@@ -3,6 +3,20 @@ let eprintfn fmt = Printf.ksprintf prerr_endline fmt
 
 let verbose_eprintlf ?(verbose = false) fmt = Printf.ksprintf (fun s -> if verbose then prerr_endline s else ()) fmt
 
+let save_as ?(mode = 0o644) ~path f =
+  let temp = Printf.sprintf "%s.save.%d.tmp" path (Unix.getpid ()) in
+  let fd = Unix.openfile temp [ Unix.O_WRONLY; Unix.O_CREAT ] mode in
+  Fun.protect ~finally:(fun () -> Unix.close fd) @@ fun () ->
+  try
+    let ch = Unix.out_channel_of_descr fd in
+    f ch;
+    flush ch;
+    Unix.fsync fd;
+    Unix.rename temp path
+  with exn ->
+    (try Unix.unlink temp with _ -> ());
+    raise exn
+
 (** Display and conversion functions for paths and secret names *)
 module Show = struct
   let show_path p = Path.project p

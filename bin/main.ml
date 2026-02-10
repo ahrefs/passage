@@ -689,8 +689,7 @@ module Template_cmd = struct
       | None -> print_string contents
       | Some target_file ->
         let target_file = Path.project target_file in
-        let flags = [ Open_wronly; Open_creat; Open_trunc; Open_binary ] in
-        Out_channel.(with_open_gen flags 0o600 target_file (fun oc -> output_string oc contents))
+        Util.save_as ~path:target_file ~mode:0o600 (fun oc -> output_string oc contents)
     with exn -> Shell.die ~exn "E: failed to substitute file"
 
   let target_file =
