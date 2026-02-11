@@ -1,3 +1,14 @@
+(** File output protected with atomic rename.
+
+    [save_as path f] is similar to {!Out_channel.with_open_bin} except that writing is done to a temporary file that
+    will be renamed to [path] after [f] has successfully terminated. This guarantees that either [path] is not modified
+    or contains whatever [f] wrote to it.
+
+    Mode, if absent, defaults to [0o644].
+
+    Based on Devkit's [Files.save_as]. *)
+val save_as : ?mode:int -> path:string -> (out_channel -> unit) -> unit
+
 module Secret_name : sig
   type t
 

@@ -141,8 +141,8 @@ module Recipients = struct
       let recipients_names_with_root_group = "@root" :: (recipients_names |> List.sort String.compare) in
       let recipients_file_path = Storage.Secrets.get_recipients_file_path secret_path in
       let (_ : Path.t) = Path.ensure_parent recipients_file_path in
-      Out_channel.with_open_text (show_path recipients_file_path) (fun oc ->
-        List.iter (fun line -> Printf.fprintf oc "%s\n" line) recipients_names_with_root_group)
+      Storage.save_as ~mode:0o666 ~path:(show_path recipients_file_path) @@ fun oc ->
+      List.iter (fun line -> Printf.fprintf oc "%s\n" line) recipients_names_with_root_group
 
   let rewrite_recipients_file ?use_sudo secret_name new_recipients_list =
     let secret_path = path_of_secret_name secret_name in
@@ -152,8 +152,8 @@ module Recipients = struct
     (* Deduplicate and sort recipients *)
     let deduplicated_recipients = List.sort_uniq String.compare new_recipients_list in
     let () =
-      Out_channel.with_open_text (show_path secret_recipients_file) (fun oc ->
-        List.iter (fun line -> Printf.fprintf oc "%s\n" line) deduplicated_recipients)
+      Storage.save_as ~mode:0o666 ~path:(show_path secret_recipients_file) @@ fun oc ->
+      List.iter (fun line -> Printf.fprintf oc "%s\n" line) deduplicated_recipients
     in
     let sorted_updated_recipients_names = Storage.Secrets.get_recipients_names secret_path in
     if sorted_base_recipients <> sorted_updated_recipients_names then (
