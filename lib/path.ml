@@ -1,4 +1,4 @@
-include Abstract_type.Fresh (String)
+include Types.Fresh (String)
 
 let is_directory p = try Sys.is_directory (project p) with Sys_error _ -> false
 

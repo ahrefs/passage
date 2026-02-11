@@ -16,7 +16,7 @@ let config_lines filename =
         if trimmed = "" || String.starts_with ~prefix:"#" trimmed then None else Some trimmed))
 
 module Secret_name = struct
-  include Abstract_type.Fresh (String)
+  include Types.Fresh (String)
   let norm_secret secret = project secret |> Path.build_rel_path |> Path.project |> inject
 end
 

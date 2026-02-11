@@ -1,5 +1,5 @@
 module Key = struct
-  include Abstract_type.Fresh (String)
+  include Types.Fresh (String)
   let from_identity_file ?use_sudo f = inject (Shell.age_get_recipient_key_from_identity_file ?use_sudo f)
 end
 
