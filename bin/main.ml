@@ -689,7 +689,7 @@ module Template_cmd = struct
       | None -> print_string contents
       | Some target_file ->
         let target_file = Path.project target_file in
-        Util.save_as ~path:target_file ~mode:0o600 (fun oc -> output_string oc contents)
+        Storage.save_as ~path:target_file ~mode:0o600 (fun oc -> output_string oc contents)
     with exn -> Shell.die ~exn "E: failed to substitute file"
 
   let target_file =
