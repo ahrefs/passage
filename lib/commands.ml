@@ -152,8 +152,8 @@ module Recipients = struct
     (* Deduplicate and sort recipients *)
     let deduplicated_recipients = List.sort_uniq String.compare new_recipients_list in
     let () =
-      Out_channel.with_open_text (show_path secret_recipients_file) (fun oc ->
-        List.iter (fun line -> Printf.fprintf oc "%s\n" line) deduplicated_recipients)
+      Util.save_as ~mode:0o666 ~path:(show_path secret_recipients_file) @@ fun oc ->
+      List.iter (fun line -> Printf.fprintf oc "%s\n" line) deduplicated_recipients
     in
     let sorted_updated_recipients_names = Storage.Secrets.get_recipients_names secret_path in
     if sorted_base_recipients <> sorted_updated_recipients_names then (
