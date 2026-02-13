@@ -1,3 +1,6 @@
+## Unreleased
+- Update os availability in opam. Make passage available in macos again
+
 ## 0.3.2 (2026-01-20)
 remove `devkit` dependency
 remove `re2` dependency, use `re` instead
