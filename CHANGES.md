@@ -1,4 +1,4 @@
-## Unreleased
+## 0.3.3 (2026-02-13)
 - Update os availability in opam. Make passage available in macos again
 
 ## 0.3.2 (2026-01-20)
