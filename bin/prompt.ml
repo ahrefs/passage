@@ -73,16 +73,21 @@ module Editor = struct
        match Path.is_directory shm_dir && has_sufficient_perms with
        | true -> Some shm_dir
        | false ->
-       match
-         yesno
-           {|Your system does not have /dev/shm, which means that it may
+         let shm_warning_ack_file = Lazy.force Config.shm_warning_ack_file in
+         if Sys.file_exists shm_warning_ack_file then None
+         else (
+           match
+             yesno
+               {|Your system does not have /dev/shm, which means that it may
 be difficult to entirely erase the temporary non-encrypted
-password file after editing.
+file contents after editing.
 
 Are you sure you would like to continue?|}
-       with
-       | false -> exit 1
-       | true -> None)
+           with
+           | false -> exit 1
+           | true ->
+             (try FileUtil.touch shm_warning_ack_file with _ -> ());
+             None))
 
   let with_secure_tmpfile f =
     let temp_dir =

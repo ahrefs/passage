@@ -41,3 +41,5 @@ let identity_file =
         try Unix.realpath path
         with Unix.Unix_error (Unix.ENOENT, "realpath", _) ->
           Printf.ksprintf failwith "no identity file found (%s). Is passage setup? Try 'passage init'." path)
+
+let shm_warning_ack_file = lazy (Filename.concat (Lazy.force !base_dir) ".shm_warning_ack")
