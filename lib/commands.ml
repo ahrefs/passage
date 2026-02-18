@@ -34,16 +34,18 @@ The location of these can be overriden using environment variables. Please check
 What should be the name used for your recipient identity?|}
       in
       let user_name =
-        let input = String.trim @@ In_channel.input_all stdin in
-        let buf = Buffer.create (String.length input) in
-        String.iter
-          (fun c ->
-            match c with
-            | ' ' -> Buffer.add_char buf '_'
-            | '\n' -> ()
-            | c -> Buffer.add_string buf (Char.escaped c))
-          input;
-        Buffer.contents buf
+        match In_channel.input_line stdin with
+        | None -> die "E: EOF while reading usern ame."
+        | Some line ->
+          let line = String.trim line in
+          let buf = Buffer.create String.(length line) in
+          String.iter
+            (fun c ->
+              match c with
+              | ' ' -> Buffer.add_char buf '_'
+              | c -> Buffer.add_string buf (Char.escaped c))
+            line;
+          Buffer.contents buf
       in
       if Sys.is_directory base_dir && force then FileUtil.rm ~recurse:true [ base_dir ];
       let () = Shell.age_generate_identity_key_root_group_exn ?use_sudo user_name in
