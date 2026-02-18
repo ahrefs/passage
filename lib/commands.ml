@@ -7,7 +7,10 @@ let eprintfn = Util.eprintfn
 let printfn = Util.printfn
 
 module Init = struct
-  let init ?use_sudo () =
+  let init ?use_sudo ?(force = false) () =
+    let base_dir = Lazy.force !Config.base_dir in
+    if Sys.is_directory base_dir && not force then
+      die "E: Passage init failed, %s already exists (add --force to overwrite)" base_dir;
     try
       (* create private and pub key, ask for user's name *)
       let () =
@@ -42,11 +45,12 @@ What should be the name used for your recipient identity?|}
           input;
         Buffer.contents buf
       in
+      if Sys.is_directory base_dir && force then FileUtil.rm ~recurse:true [ base_dir ];
       let () = Shell.age_generate_identity_key_root_group_exn ?use_sudo user_name in
       verbose_eprintlf "I: Passage setup completed.\n"
     with exn ->
       (* Error out and delete everything, so we can start fresh next time *)
-      FileUtil.rm ~recurse:true [ Lazy.force !Config.base_dir ];
+      FileUtil.rm ~recurse:true [ base_dir ];
       die ~exn "E: Passage init failed"
 end
 
