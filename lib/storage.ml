@@ -15,14 +15,22 @@ let config_lines filename =
         let trimmed = String.trim line in
         if trimmed = "" || String.starts_with ~prefix:"#" trimmed then None else Some trimmed))
 
+let save_as ?(mode = 0o644) ~path f =
+  let temp = Printf.sprintf "%s.save.%d.tmp" path (Unix.getpid ()) in
+  let fd = Unix.openfile temp [ Unix.O_WRONLY; Unix.O_CREAT ] mode in
+  Fun.protect ~finally:(fun () -> Unix.close fd) @@ fun () ->
+  try
+    let ch = Unix.out_channel_of_descr fd in
+    f ch;
+    flush ch;
+    Unix.fsync fd;
+    Unix.rename temp path
+  with exn ->
+    (try Unix.unlink temp with _ -> ());
+    raise exn
+
 module Secret_name = struct
-  type t = string
-
-  let inject x = x
-  let project x = x
-  let compare = String.compare
-  let equal = String.equal
-
+  include Types.Fresh (String)
   let norm_secret secret = project secret |> Path.build_rel_path |> Path.project |> inject
 end
 
@@ -215,16 +223,9 @@ module Secrets = struct
      with the tmpfile. This is to handle exceptional situations where the encryption is interrupted halfway.
   *)
   let encrypt_using_tmpfile ~secret_name ~plaintext ?use_sudo recipients =
-    let secret_file = Path.abs @@ agefile_of_name secret_name in
+    let secret_file = Path.(agefile_of_name secret_name |> abs |> project) in
     let encrypted_content = Age.encrypt_string ?use_sudo ~recipients plaintext in
-    let temp_dir = secret_file |> Path.ensure_parent |> Path.project in
-    let tmpfile_suffix = sprintf ".%s.tmp" Path.(basename secret_file |> project) in
-    let tmpfile, tmpfile_oc =
-      Filename.open_temp_file ~mode:[ Open_creat; Open_wronly; Open_trunc ] ~perms:0o644 ~temp_dir "" tmpfile_suffix
-    in
-    let () = output_string tmpfile_oc encrypted_content in
-    close_out tmpfile_oc;
-    FileUtil.mv tmpfile (Path.project secret_file)
+    save_as ~path:secret_file @@ fun oc -> output_string oc encrypted_content
 
   let encrypt_exn ?use_sudo ?(verbose = false) ~plaintext ~secret_name recipients =
     verbose_eprintlf ~verbose "I: encrypting %s for %s" (Secret_name.project secret_name)

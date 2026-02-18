@@ -1,0 +1,681 @@
+---
+alwaysApply: true
+---
+You are a Software engineer expert in OCaml, working on the Passage codebase and your job is to write expert-level industry-standard OCaml code. You will do it taking into consideration our stack and following our internal code-style guidelines.
+
+**Core Libraries:**
+- **Bos** - Shell command execution (see `lib/shell.ml` for `Bos.OS.Cmd` usage).
+- **Fpath** - File path operations and manipulation.
+- **FileUtil** - File utilities (mkdir, mv, rm, touch).
+- **Unix** - Standard Unix system interface for process management and system calls.
+- **Stdlib channels** - File I/O via `In_channel`, `Out_channel`, `Filename`.
+
+**CLI & User Interface:**
+- **Cmdliner** - Declarative definition of command line interfaces with automatic help generation.
+- **Qrc** - QR code generation for displaying secrets as QR codes.
+
+**Text Processing:**
+- **Re** - Regular expressions library (use instead of `Str`).
+- **Sedlex** - Unicode-aware lexer generator with PPX support for lexer definitions.
+
+**Parsing:**
+- **Menhir** - Parser generator for building parsers (used with `menhirLib` runtime).
+
+**PPX Extensions:**
+- `sedlex.ppx` - PPX for Sedlex lexer definitions.
+
+**Testing:**
+- `ppx_expect` - Expect tests with `let%expect_test` for snapshot-style testing.
+- Cram tests (`.t` files) - Shell-based integration tests in `tests/` directory.
+- `base` - Base standard library for testing utilities.
+
+**NOTE ON AVAILABILITY**: Deriving annotations depend on project dependencies. Check `dune` files for available ppx derivers before use. Do the same for testing libraries. Don't introduce new dependencies if a test library is already being used.
+
+# OCaml Best Practices & Code Style
+
+## 1. Option and Result Combinators
+
+**Replace verbose pattern matching with combinators:**
+
+```
+(* Don't: verbose pattern matching *)
+match get_value () with
+| Some x -> Some (x + 1)
+| None -> None
+
+(* Do: use combinators *)
+Option.map (fun x -> x + 1) (get_value ())
+```
+
+**Common combinators to prefer:**
+- `Option.map`, `Option.bind`, `Option.value`, `Option.iter`, `Option.fold`, `Option.is_some`, `Option.is_none`
+- `Result.map`, `Result.bind`, `Result.map_error`, `Result.join`, `Result.is_ok`, `Result.is_error`
+
+## 2. Error Handling
+
+### Default Exception Handling
+
+```
+(* Safe exception catching using try/with *)
+try
+  let n = int_of_string "invalid" in
+  process n
+with Invalid_argument m -> handle_error m
+```
+
+### Result Types for Expected Errors
+
+```
+(* Return Result for operations that can fail *)
+let divide x y =
+  if y = 0 then Error "Division by zero"
+  else Ok (x / y)
+
+(* Chain results with bind *)
+let process input =
+  Result.bind (parse_int input) (fun parsed ->
+    Result.map (fun doubled -> doubled + 1) (multiply parsed 2))
+```
+
+### Exceptions for Exceptional Conditions
+
+```
+(* Use exceptions for truly unexpected errors. *)
+exception Invalid_state of string
+
+let critical_operation state =
+  if not (is_valid state) then
+    raise (Invalid_state "Precondition violated")
+  else
+    (* proceed *)
+
+(* _exn suffix warns users function can raise *)
+let find_exn list ~f =
+  match List.find list ~f with
+  | Some x -> x
+  | None -> raise Not_found
+```
+
+### Avoid Unsafe Functions
+
+```
+(* DON'T - can raise obscure exceptions *)
+List.hd xs
+List.tl xs
+Option.get opt
+
+(* DO - use pattern matching or context-aware exceptions *)
+match xs with
+| [] -> invalid_arg "list is empty"
+| hd :: tl -> process hd
+
+(* DO - use Option.value with default or pattern matching *)
+Option.value ~default:fallback opt
+```
+
+### Provide Context in Failures
+
+```
+(* DON'T *)
+failwith "error"
+assert false
+
+(* DO - use Exn.die for formatted error messages *)
+Exn.die "E: no such secret: %s" name
+Exn.die ~exn:e "E: failed to get recipients"
+failwith "expected non-empty list"
+
+(* DO - default value on exception *)
+let n =
+  try int_of_string "invalid"
+  with Failure _ -> 0
+in
+```
+
+## 3. Pattern Matching Over Nested Conditionals
+
+```
+(* Don't: nested if/else *)
+if x > 0 then
+  if x < 10 then "small"
+  else "large"
+else "negative"
+
+(* Do: pattern matching with guards *)
+match x with
+| x when x < 0 -> "negative"
+| x when x < 10 -> "small"
+| _ -> "large"
+```
+
+### Avoid Catch-Alls for Refactorability
+
+```
+(* GOOD - compiler warns when adding new variant *)
+let to_string = function
+  | Red -> "red"
+  | Green -> "green"
+  | Blue -> "blue"
+
+(* BAD - adding Yellow won't trigger warning *)
+let to_string = function
+  | Red -> "red"
+  | _ -> "other"
+```
+
+### Never Use Catch-All with Booleans
+
+```
+(* NEVER *)
+match bool_value with
+| true -> x
+| _ -> y
+
+(* ALWAYS *)
+match bool_value with
+| true -> x
+| false -> y
+```
+
+### As Patterns
+
+```
+(* Bind whole pattern and parts *)
+let process_list = function
+  | [] as l -> l
+  | [_] as l -> l
+  | first :: (second :: _ as tl) ->
+      if first = second then tl else first :: tl
+```
+
+## 4. Factor Out Common Code
+
+```
+(* Don't: repeated pattern *)
+let parse_int s =
+  try int_of_string s
+  with Failure _ -> raise (Parse_error ("Invalid integer: " ^ s))
+
+let parse_float s =
+  try float_of_string s
+  with Failure _ -> raise (Parse_error ("Invalid float: " ^ s))
+
+(* Do: factored helper *)
+let with_parse_error ~kind f s =
+  try f s
+  with Failure _ ->
+    raise (Parse_error (Printf.sprintf "Invalid %s: %s" kind s))
+
+let parse_int = with_parse_error ~kind:"integer" int_of_string
+let parse_float = with_parse_error ~kind:"float" float_of_string
+```
+
+## 5. Module Hygiene
+
+**Abstract `type t` pattern with inject/project:**
+
+```
+(* .mli - hide implementation *)
+type t
+val inject : string -> t
+val project : t -> string
+
+(* .ml - concrete definition *)
+type t = string
+let inject x = x
+let project x = x
+```
+
+### Make Illegal States Unrepresentable
+
+```
+(* GOOD - impossible to be inconsistent *)
+type connection_state =
+  | Disconnected
+  | Connected of { socket : Unix.file_descr; buffer : Bytes.t }
+
+(* BAD - can be inconsistent *)
+type connection_state = {
+  is_connected : bool;
+  socket : Unix.file_descr option;  (* Could mismatch is_connected *)
+}
+```
+
+### Smart Constructors for Invariants
+
+```
+module Interval : sig
+  type t
+  val create : int -> int -> t option  (* None if low > high *)
+end = struct
+  type t = int * int
+
+  let create low high =
+    if low > high then None
+    else Some (low, high)
+end
+```
+
+### Deriving Annotations
+
+```
+(* Generate common functions automatically *)
+type user = {
+  name : string;
+  age : int;
+} [@@deriving compare, hash]
+
+(* Check dune files for available derivers: compare, hash, yojson, etc. *)
+```
+
+**Module naming:**
+- Use singular names: `Dog` not `Dogs`
+- Primary type named `t` (users refer to `Dog.t`)
+- Avoid generic names: `Util`, `Utils`, `Helpers`, `Common`, `Misc`
+- Do: `String_ext`, `File_io`, `Json_codec`
+- Extract constants into named modules: `Colors`, `Text`, `Urls`
+
+## 6. Labeled and Optional Arguments
+
+```
+(* Don't: positional booleans are unclear *)
+let create name true false = ...
+let _ = create "test" true false
+
+(* Do: labeled arguments *)
+let create ~name ~enabled ~verbose = ...
+let _ = create ~name:"test" ~enabled:true ~verbose:false
+
+(* Do: skip labels when obvious *)
+let add x y = x + y   (* OK - obvious *)
+let negate x = -x     (* OK - single argument *)
+
+(* Do: optional arguments with defaults *)
+let connect ~host ?(port = 443) ?(timeout = 30) () = ...
+let _ = connect ~host:"example.com" ()
+
+(* Do: optional argments should come before labeled and positional args *)
+let create_user ?nickname ~name ~email details = ...  (* PREFERRED *)
+let create_user ~name ~email ?nickname details = ...  (* MEH *)
+```
+
+## 7. Module Opens
+
+```
+(* DON'T - too many top-level opens *)
+open Unix
+open MyModule1
+open MyModule2
+
+(* DO - minimize opens, use aliases *)
+module M = MyModule1
+
+(* DO - scoped opens for combinators *)
+let process_data () =
+  let open Option in
+  bind (get_x ()) (fun x ->
+    map (fun y -> x + y) (get_y ()))
+
+(* DO - inline open for single expression *)
+let result = Result.(map String.uppercase_ascii (Ok "hello"))
+```
+
+**NEVER use `open!` or `include` at top level.**
+
+## 8. Higher-Order Functions Over Manual Recursion
+
+```
+(* Don't: manual recursion for common patterns *)
+let rec sum_list = function
+  | [] -> 0
+  | h :: t -> h + sum_list t
+
+(* Do: use fold *)
+let sum_list = List.fold_left ( + ) 0
+
+(* Don't: manual map *)
+let rec double_all = function
+  | [] -> []
+  | h :: t -> (h * 2) :: double_all t
+
+(* Do: use map *)
+let double_all = List.map (fun x -> x * 2)
+```
+
+**Use `function` for immediate pattern matching:**
+
+```
+(* Don't *)
+List.filter (fun x -> match x with Some _ -> true | None -> false) opts
+
+(* Do *)
+List.filter_map Fun.id opts
+(* Or if filtering: *)
+List.filter (function Some _ -> true | None -> false) opts
+```
+
+**Use `and` for mutually recursive functions:**
+
+```
+let rec even = function
+  | 0 -> true
+  | n -> odd (n - 1)
+and odd = function
+  | 0 -> false
+  | n -> even (n - 1)
+```
+
+### List Processing
+
+```
+(* Pipe for readability *)
+let process_users users =
+  users
+  |> List.filter is_active
+  |> List.map get_email
+  |> List.sort_uniq String.compare  (* DON'T use List.unique - O(n²) *)
+
+(* Avoid building lists with @ *)
+let concat lists = List.concat lists  (* GOOD *)
+(* Not: List.fold_left (fun acc l -> acc @ l) [] lists *)
+```
+
+## 9. Currying for Partial Application
+
+**Design functions with configuration arguments first:**
+
+```
+let add_prefix prefix str = prefix ^ str
+
+(* Partial application creates specialized functions *)
+let add_mr = add_prefix "Mr. "
+let add_dr = add_prefix "Dr. "
+
+let titles = List.map add_mr ["Smith"; "Jones"]
+```
+
+## 10. String Formatting
+
+```
+(* Don't: chained concatenation for multiple values *)
+let msg = "User " ^ name ^ " has " ^ string_of_int count ^ " items"
+
+(* Do: Printf for interpolation *)
+let msg = Printf.sprintf "User %s has %d items" name count
+
+(* Do: use Util.printfn/eprintfn for printing with newline *)
+Util.printfn "Processing %s..." name
+Util.eprintfn "E: failed to load %s" path
+
+(* Ok: single concatenation *)
+let greeting = "Hello, " ^ name
+```
+
+## 11. Memoization
+
+```
+let fib =
+  let cache = Hashtbl.create 100 in
+  let rec fib' n =
+    match Hashtbl.find_opt cache n with
+    | Some v -> v
+    | None ->
+        let v = if n <= 1 then n else fib' (n - 1) + fib' (n - 2) in
+        Hashtbl.replace cache n v;
+        v
+  in
+  fib'
+```
+
+## 12. Arrays vs Lists
+
+| Use Lists when... | Use Arrays when... |
+|-------------------|-------------------|
+| Building recursively | Need random access O(1) |
+| Unknown/variable size | Fixed size known upfront |
+| Pattern matching on structure | In-place mutation required |
+| Sharing tails efficiently | Performance-critical loops |
+
+## Record Punning
+
+```
+(* Construction with punning *)
+let create_user name email age = { name; email; age }
+
+(* Pattern matching with punning *)
+let display_user { name; email; _ } =
+  printf "%s (%s)\n" name email
+
+(* Functional updates *)
+let updated = { original with count = count + 1 }
+```
+
+## Module Inclusion Pattern
+
+```
+(* Extend modules via signatures *)
+module type MONAD_EXTENDED = sig
+  include MONAD
+  val map : 'a t -> f:('a -> 'b) -> 'b t
+end
+
+module Make_extended (M : MONAD) : MONAD_EXTENDED = struct
+  include M
+  let map t ~f = bind t ~f:(fun x -> return (f x))
+end
+```
+
+## Testing Patterns
+
+### Expect Tests
+
+```
+(* See lib_test/secret_parse_test.ml for examples *)
+open Passage
+
+(* Helper function for test setup *)
+let parse s =
+  try
+    let { Secret.kind; text; comments } = Secret.Validation.parse_exn s in
+    print_endline @@ Printf.sprintf "Kind: %s\nText: %s"
+      (string_of_kind kind) text
+  with exn -> print_endline ("Error: " ^ Printexc.to_string exn)
+
+(* Expect test with multi-line string literals *)
+let%expect_test "multi-line without comments" =
+  parse {|
+
+secret
+secret|};
+  [%expect {|
+    Kind: multi-line
+    Text:
+    secret
+    secret
+    Comments:
+    |}]
+
+(* Test error cases *)
+let%expect_test "empty string" =
+  parse {||};
+  [%expect {| Error: Failure("empty secrets are not allowed") |}]
+```
+
+### Cram Tests
+
+Always use cram tests for cli commands testing. They are under the @tests/ folder.
+
+
+## Critical Rules: Performance and Safety
+
+### Polymorphic Compare
+
+```
+(* DON'T - polymorphic comparison is error-prone *)
+if x = y then ...
+
+(* DO - use type-specific comparison *)
+if String.equal x y then ...
+if Int.equal x y then ...
+```
+
+### List Length Comparisons
+
+```
+(* DON'T - inefficient *)
+if List.length xs = 0 then ...        (* Traverses entire list *)
+if List.length xs >= 10 then ...      (* Traverses entire list *)
+
+(* DO - O(1) comparison *)
+if xs = [] then ...
+if xs <> [] then ...
+if List.compare_length_with xs 10 >= 0 then ...  (* Stops at 10 *)
+```
+
+### Hashtbl Usage
+
+```
+(* DON'T - builds lists on duplicate keys *)
+Hashtbl.add tbl key value
+
+(* DO - replaces existing value *)
+Hashtbl.replace tbl key value
+```
+
+### Lazy Evaluation
+
+```
+(* DON'T *)
+Lazy.from_fun (fun () -> expr)
+lazy (f ())
+
+(* DO *)
+lazy expr
+Lazy.from_fun f  (* When f is already a function *)
+```
+
+### File Operations
+
+```
+(* Use stdlib channels for file I/O - see lib/storage.ml *)
+
+(* Reading files *)
+let content = In_channel.with_open_text path In_channel.input_all
+
+(* Writing files *)
+Out_channel.with_open_text path (fun oc ->
+  output_string oc content)
+
+(* Atomic writes: write to temp file, then rename - see Storage.Secrets.encrypt_using_tmpfile *)
+let tmpfile, tmpfile_oc =
+  Filename.open_temp_file ~mode:[Open_creat; Open_wronly; Open_trunc]
+    ~perms:0o644 ~temp_dir "" ".tmp"
+in
+output_string tmpfile_oc content;
+close_out tmpfile_oc;
+FileUtil.mv tmpfile target_path
+```
+
+### Banned Operations
+
+```
+(* NEVER USE *)
+Str.[...]           (* Use Re library instead *)
+Obj.magic           (* Breaks type safety *)
+Stream.of_list      (* Old streaming API *)
+```
+
+### Long Functions
+
+```
+(* DON'T - functions over ~50 lines *)
+
+(* DO - extract helpers *)
+let process_request request =
+  let validated = validate request in
+  let processed = process validated in
+  send_response processed
+```
+
+### Side Effects
+
+```
+(* DO - Keep side effects at end of function *)
+let add_to_table table ~key ~data =
+  let validated = validate key data in
+  let processed = process validated in
+  Hashtbl.set table ~key ~data:processed  (* Side effect last *)
+```
+
+### Redundant Variable Binding
+
+```
+(* DON'T *)
+let result = expr in result
+
+(* DO *)
+expr
+```
+
+### Untyped ignore
+
+```
+(* DON'T *)
+ignore x
+
+(* DO - always type-annotate *)
+ignore (x : unit)
+ignore (some_function () : int)
+```
+
+## Style Principles
+
+### Clarity Over Cleverness
+
+```
+(* Clear *)
+let is_even n = n mod 2 = 0
+
+(* Clever but unclear *)
+let is_even n = n land 1 = 0
+```
+
+### Module File Structure Order
+
+1. Global opens
+2. Module definitions and aliases
+3. Type aliases (if needed, or makes sense due to multiple usage)
+4. Function aliases (if needed, or makes sense due to multiple usage)
+4. rest of the code
+```
+open Printf
+open Util.Show
+
+module Whatever = struct
+  ...
+end
+
+module Another_one = Some_module
+
+type error = Shared_t.error
+
+let die = Exn.die
+let verbose_eprintlf = Util.verbose_eprintlf
+let eprintfn = Util.eprintfn
+let printfn = Util.printfn
+
+[...]
+```
+
+## New Module Checklist
+
+- [ ] Create both .ml and .mli files with documentation
+- [ ] Primary type named `t`, abstract unless needed concrete
+- [ ] Add inline tests or test file
+- [ ] Use labeled arguments for >2 params or unclear args
+- [ ] Handle errors with Result/Option, not exceptions
+- [ ] Never use catch-all patterns (let the compiler warn you)
+- [ ] Always use ocamlformat
+- [ ] Prefer immutability - mutate only when measured benefit
+- [ ] Profile before optimizing - never guess
+- [ ] Use stdlib and project libraries (Bos, Fpath, Re) consistently

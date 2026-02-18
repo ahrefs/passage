@@ -12,3 +12,6 @@ val secrets_dir : string lazy_t ref
 
 (** Path to the identity key file. Default: $PASSAGE_IDENTITY or <base_dir>/identity.key *)
 val identity_file : string lazy_t ref
+
+(** Path to the shm warning acknowledgement state file. Default: <base_dir>/.shm_warning_ack *)
+val shm_warning_ack_file : string lazy_t

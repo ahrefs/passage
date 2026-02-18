@@ -11,19 +11,5 @@ build: [
     "@doc" {with-doc}
   ]
 ]
-available: os != "win32" & os != "macos"
+available: os != "win32"
 x-maintenance-intent: ["(latest)"]
-x-ci-accept-failures: [
-  "alpine-3.22"
-  "centos-9"
-  "centos-10"
-  "archlinux"
-  "debian-11"
-  "fedora-41"
-  "fedora-42"
-  "fedora-43"
-  "freebsd-14.3"
-  "opensuse-15.6"
-  "opensuse-16.0"
-  "opensuse-tumbleweed"
-]

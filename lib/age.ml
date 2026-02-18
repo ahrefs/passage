@@ -1,12 +1,6 @@
 module Key = struct
-  type t = string
-
-  let inject x = x
-  let project x = x
-  let inject_list = List.map inject
-  let project_list = List.map project
-
-  let from_identity_file ?use_sudo f = inject @@ Shell.age_get_recipient_key_from_identity_file ?use_sudo f
+  include Types.Fresh (String)
+  let from_identity_file ?use_sudo f = inject (Shell.age_get_recipient_key_from_identity_file ?use_sudo f)
 end
 
 type recipient = {
