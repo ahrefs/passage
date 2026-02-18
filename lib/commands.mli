@@ -1,5 +1,5 @@
 module Init : sig
-  val init : ?use_sudo:bool -> unit -> unit
+  val init : ?use_sudo:bool -> ?force:bool -> unit -> unit
 end
 
 module Get : sig

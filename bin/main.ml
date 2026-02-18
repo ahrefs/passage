@@ -485,8 +485,14 @@ end
 module Init = struct
   let init =
     let doc = "initial setup of passage" in
+    let force =
+      let doc = "force creating of config directory" in
+      Arg.(value & flag & info [ "f"; "force" ] ~doc)
+    in
     let info = Cmd.info "init" ~doc in
-    let term = Term.(const (fun () -> try Commands.Init.init () with Failure s -> Shell.die "%s" s) $ const ()) in
+    let term =
+      Term.(const (fun force -> try Commands.Init.init ~force () with Failure s -> Shell.die "%s" s) $ force)
+    in
     Cmd.v info term
 end
 
