@@ -1,3 +1,8 @@
+## Unreleased
+
+- `passage init` does not remove config dir unless `--force` is passed.
+- Newline can be used to terminate user name input.
+
 ## 0.3.3 (2026-02-13)
 - Update os availability in opam. Make passage available in macos again
 
