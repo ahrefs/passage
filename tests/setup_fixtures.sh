@@ -7,6 +7,24 @@ ROBBY="robby.rob"
 TOMMY="tommy.tom"
 HOST_A="host/a"
 
+# Cross-platform wrappers for commands with different syntax on macOS vs Linux
+if [ "$(uname)" = "Darwin" ]; then
+  # stat -c "%a" is GNU-only; macOS uses stat -f "%OLp"
+  stat() {
+    if [ "$1" = "-c" ] && [ "$2" = "%a" ]; then
+      shift 2
+      command stat -f "%OLp" "$@"
+    else
+      command stat "$@"
+    fi
+  }
+
+  # macOS wc pads output with leading spaces; strip them for consistent output
+  wc() {
+    command wc "$@" | tr -s ' ' | sed 's/^ //'
+  }
+fi
+
 export PASSAGE_DIR=./fixtures
 # Set default identity as Bobby Bob
 export PASSAGE_IDENTITY="$BOBBY.key"
@@ -267,3 +285,7 @@ EOF
 setup_keys_dir
 setup_secrets_dir
 setup_templates
+
+# Acknowledge /dev/shm warning so it doesn't appear during tests
+# (macOS does not have /dev/shm)
+touch "$PASSAGE_DIR/.shm_warning_ack"
