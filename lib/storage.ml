@@ -205,14 +205,13 @@ module Secrets = struct
       |> List.flatten
     in
     let recipients = List.map recipient_of_name recipients_names in
-    recipients @ groups_recipients
-    |> List.sort Age.recipient_compare
-    |> List.fold_right
-         (fun (recipient : Age.recipient) (acc : Age.recipient list) ->
-           match acc with
-           | r' :: _ when r'.name = recipient.name -> acc
-           | _ -> recipient :: acc)
-         []
+    let sorted = recipients @ groups_recipients |> List.sort Age.recipient_compare in
+    List.fold_right
+      (fun (recipient : Age.recipient) (acc : Age.recipient list) ->
+        match acc with
+        | r' :: _ when r'.name = recipient.name -> acc
+        | _ -> recipient :: acc)
+      sorted []
 
   let is_recipient_of_secret key secret_name =
     let recipients = get_recipients_from_path_exn (to_path secret_name) in

@@ -25,7 +25,7 @@ let decrypt_string ?use_sudo ~identity_file ~silence_stderr ciphertext =
 let encrypt_string ?use_sudo ~recipients plaintext =
   let stdin = Bos.OS.Cmd.in_string plaintext in
   let stdout = Bos.OS.Cmd.out_string in
-  let recipient_keys = get_recipients_keys recipients |> Key.project_list in
+  let recipient_keys = get_recipients_keys recipients |> Key.project_list |> List.sort_uniq String.compare in
   let recipients_arg =
     List.map (fun key -> Printf.sprintf "--recipient %s" (Filename.quote key)) recipient_keys |> String.concat " "
   in
