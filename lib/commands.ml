@@ -7,7 +7,10 @@ let eprintfn = Util.eprintfn
 let printfn = Util.printfn
 
 module Init = struct
-  let init ?use_sudo () =
+  let init ?use_sudo ?(force = false) () =
+    let base_dir = Lazy.force !Config.base_dir in
+    let has_config = try Sys.is_directory base_dir with _ -> false in
+    if has_config && not force then die "E: Passage init failed, %s already exists (add --force to overwrite)" base_dir;
     try
       (* create private and pub key, ask for user's name *)
       let () =
@@ -31,22 +34,25 @@ The location of these can be overriden using environment variables. Please check
 What should be the name used for your recipient identity?|}
       in
       let user_name =
-        let input = String.trim @@ In_channel.input_all stdin in
-        let buf = Buffer.create (String.length input) in
-        String.iter
-          (fun c ->
-            match c with
-            | ' ' -> Buffer.add_char buf '_'
-            | '\n' -> ()
-            | c -> Buffer.add_string buf (Char.escaped c))
-          input;
-        Buffer.contents buf
+        match In_channel.input_line stdin with
+        | None -> die "E: EOF while reading user name."
+        | Some line ->
+          let line = String.trim line in
+          let buf = Buffer.create String.(length line) in
+          String.iter
+            (fun c ->
+              match c with
+              | ' ' -> Buffer.add_char buf '_'
+              | c -> Buffer.add_string buf (Char.escaped c))
+            line;
+          Buffer.contents buf
       in
+      if has_config && force then FileUtil.rm ~recurse:true [ base_dir ];
       let () = Shell.age_generate_identity_key_root_group_exn ?use_sudo user_name in
       verbose_eprintlf "I: Passage setup completed.\n"
     with exn ->
       (* Error out and delete everything, so we can start fresh next time *)
-      FileUtil.rm ~recurse:true [ Lazy.force !Config.base_dir ];
+      FileUtil.rm ~recurse:true [ base_dir ];
       die ~exn "E: Passage init failed"
 end
 
