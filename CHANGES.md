@@ -1,6 +1,6 @@
 ## Unreleased
 
-- `passage init` does not remove config dir unless `--force` is passed.
+- `passage init` does not overwrite previous configs unless `--force` is passed.
 - Newline can be used to terminate user name input.
 
 ## 0.3.3 (2026-02-13)

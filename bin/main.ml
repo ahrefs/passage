@@ -486,7 +486,7 @@ module Init = struct
   let init =
     let doc = "initial setup of passage" in
     let force =
-      let doc = "force creating of config directory" in
+      let doc = "create a new setup of passage, even if one already exists" in
       Arg.(value & flag & info [ "f"; "force" ] ~doc)
     in
     let info = Cmd.info "init" ~doc in

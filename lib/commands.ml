@@ -10,7 +10,7 @@ module Init = struct
   let init ?use_sudo ?(force = false) () =
     let base_dir = Lazy.force !Config.base_dir in
     let has_config = try Sys.is_directory base_dir with _ -> false in
-    if has_config && not force then die "E: Passage init failed, %s already exists (add --force to overwrite)" base_dir;
+    if has_config && not force then die "E: Passage init failed, a previous installation was found in %s. Run passage init with --force to overwrite)" base_dir;
     try
       (* create private and pub key, ask for user's name *)
       let () =
