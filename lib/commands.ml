@@ -36,10 +36,7 @@ What should be the name used for your recipient identity?|}
     in
     let user_name =
       match In_channel.input_line stdin with
-      | None ->
-        die
-          "E: username input was terminated by EOF before a newline was encountered. Ensure the username is \
-           newline-terminated and try again"
+      | None -> die "E: Passage init failed: Empty user name"
       | Some line ->
         let line = String.trim line in
         let buf = Buffer.create String.(length line) in
