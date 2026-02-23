@@ -13,11 +13,10 @@ module Init = struct
     if has_config && not force then
       die "E: Passage init failed, a previous installation was found in %s. Run passage init with --force to overwrite"
         base_dir;
-    try
-      (* create private and pub key, ask for user's name *)
-      let () =
-        print_endline
-          {|
+    (* create private and pub key, ask for user's name *)
+    let () =
+      print_endline
+        {|
 Welcome to passage initial setup.
 
 Passage will now create the default dirs for secrets and recipients keys.
@@ -34,24 +33,25 @@ The layout will be:
 The location of these can be overriden using environment variables. Please check `passage --help` for details.
 
 What should be the name used for your recipient identity?|}
-      in
-      let user_name =
-        match In_channel.input_line stdin with
-        | None ->
-          die
-            "E: username input was terminated by EOF before a newline was encountered. Ensure the username is \
-             newline-terminated and try again"
-        | Some line ->
-          let line = String.trim line in
-          let buf = Buffer.create String.(length line) in
-          String.iter
-            (fun c ->
-              match c with
-              | ' ' -> Buffer.add_char buf '_'
-              | c -> Buffer.add_string buf (Char.escaped c))
-            line;
-          Buffer.contents buf
-      in
+    in
+    let user_name =
+      match In_channel.input_line stdin with
+      | None ->
+        die
+          "E: username input was terminated by EOF before a newline was encountered. Ensure the username is \
+           newline-terminated and try again"
+      | Some line ->
+        let line = String.trim line in
+        let buf = Buffer.create String.(length line) in
+        String.iter
+          (fun c ->
+            match c with
+            | ' ' -> Buffer.add_char buf '_'
+            | c -> Buffer.add_string buf (Char.escaped c))
+          line;
+        Buffer.contents buf
+    in
+    try
       if has_config && force then FileUtil.rm ~recurse:true [ base_dir ];
       let () = Shell.age_generate_identity_key_root_group_exn ?use_sudo user_name in
       verbose_eprintlf "I: Passage setup completed.\n"
