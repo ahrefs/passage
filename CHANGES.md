@@ -3,6 +3,7 @@
 - `passage init` does not overwrite previous config unless `--force` is passed.
 - Newline can be used to terminate user name input.
 - Add `overlap` command to find recipients with the most secret overlap, to help coordinate key refreshes.
+- `passage refresh` now warns when secrets are skipped due to lack of access.
 
 ## 0.3.3 (2026-02-13)
 - Update os availability in opam. Make passage available in macos again

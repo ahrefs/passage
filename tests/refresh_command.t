@@ -14,6 +14,7 @@ Should skip 01/00/secret1, 01/00/secret2, 03/secret1
 Should show individual operations on secrets when -v is passed
   $ passage refresh
   I: refreshed 6 secrets, skipped 4, failed 0
+  W: 4 secrets could not be refreshed (you don't have access). Another recipient may need to refresh those.
   $ passage refresh -v
   I: refreshed 00/.secret_starting_with_dot
   I: refreshed 00/secret1
@@ -26,6 +27,7 @@ Should show individual operations on secrets when -v is passed
   I: skipped 05/secret1
   I: refreshed test_secret
   I: refreshed 6 secrets, skipped 4, failed 0
+  W: 4 secrets could not be refreshed (you don't have access). Another recipient may need to refresh those.
 
 Refreshed secrets should have the same permissions as before (0o644)
   $ stat -c "%a" $PASSAGE_DIR/secrets/test_secret.age
@@ -100,6 +102,7 @@ Should succeed - refreshing for a group
   I: skipped 03/secret1
   I: refreshed 04/secret1
   I: refreshed 1 secrets, skipped 1, failed 0
+  W: 1 secret could not be refreshed (you don't have access). Another recipient may need to refresh those.
   $ PASSAGE_IDENTITY="robby.rob.key" passage refresh -v @root
   I: refreshed 03/secret1
   I: refreshed 04/secret1
@@ -120,6 +123,7 @@ Should succeed - refreshing for multiple recipients gets all their secrets
   I: refreshed dir/secret2
   I: refreshed test_secret
   I: refreshed 9 secrets, skipped 3, failed 0
+  W: 3 secrets could not be refreshed (you don't have access). Another recipient may need to refresh those.
 
 Should succeed - Non-existent recipient still finds @everyone secrets
   $ passage refresh -v @non.existent.user
@@ -137,3 +141,4 @@ Should succeed - mixing path and recipient arguments
   I: skipped 03/secret1
   I: refreshed test_secret
   I: refreshed 1 secrets, skipped 1, failed 0
+  W: 1 secret could not be refreshed (you don't have access). Another recipient may need to refresh those.

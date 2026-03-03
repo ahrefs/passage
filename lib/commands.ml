@@ -168,7 +168,8 @@ module Recipients = struct
       let secrets_affected = Storage.Secrets.get_secrets_in_folder (Path.folder_of_path secret_path) in
       (* it might be that we are creating a secret in a new folder and adding new recipients,
          so we have no extra affected secrets. Only refresh if there are affected secrets *)
-      if secrets_affected <> [] then Storage.Secrets.refresh ?use_sudo ~force:true ~verbose:false secrets_affected
+      if secrets_affected <> [] then
+        ignore (Storage.Secrets.refresh ?use_sudo ~force:true ~verbose:false secrets_affected : int * int * int)
       else ())
     else prerr_endline "I: no changes made to the recipients"
 
@@ -368,7 +369,12 @@ module Refresh = struct
         [] paths
     in
     let secrets = List.sort_uniq Storage.Secret_name.compare secrets in
-    Storage.Secrets.refresh ?use_sudo ~verbose secrets
+    let _refreshed, skipped, _failed = Storage.Secrets.refresh ?use_sudo ~verbose secrets in
+    if skipped > 0 then
+      eprintfn
+        "W: %d secret%s could not be refreshed (you don't have access). Another recipient may need to refresh those."
+        skipped
+        (if skipped = 1 then "" else "s")
 end
 
 module Template = struct

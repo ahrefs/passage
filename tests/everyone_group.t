@@ -88,6 +88,7 @@ REFRESH - works where @everyone is too
   I: refreshed 04/secret1
   I: refreshed 05/secret1
   I: refreshed 5 secrets, skipped 4, failed 0
+  W: 4 secrets could not be refreshed (you don't have access). Another recipient may need to refresh those.
 
 TEMPLATE
 Set default target file
