@@ -148,45 +148,67 @@ module Secrets = struct
     in
     List.map map_fn recipients_names
 
+  (** Scans a directory and returns a list of secret names and subdirectories *)
+  let scan_dir dir =
+    let dir_contents = Sys.readdir dir |> Array.to_list |> List.map (Filename.concat dir) in
+    List.fold_left
+      (fun (secret_names, subdirs) filename ->
+        match FileUtil.(test (Has_extension ext) filename) with
+        | true -> name_of_file (Path.inject filename) :: secret_names, subdirs
+        | false ->
+        match Sys.is_directory filename with
+        | true -> secret_names, filename :: subdirs
+        | false -> secret_names, subdirs)
+      ([], []) dir_contents
+
+  let resolve_recipients_in_dir dir =
+    let keys_file = Filename.concat dir keys_ext in
+    let raw_entries = config_lines keys_file in
+    let groups_names, direct_names = List.partition Age.is_group_recipient raw_entries in
+    let has_everyone = List.mem "@everyone" groups_names in
+    let group_member_names =
+      List.concat_map (fun group -> try recipients_of_group_name_exn ~map_fn:Fun.id group with _ -> []) groups_names
+    in
+    let expanded = List.sort_uniq String.compare (direct_names @ group_member_names) in
+    raw_entries, has_everyone, expanded
+
   let get_secrets_for_recipient recipient_name =
     let rec get_secrets curr_dir accum =
-      let dir_contents = Sys.readdir curr_dir |> Array.to_list |> List.map (Filename.concat curr_dir) in
-      let keys_file = Filename.concat curr_dir keys_ext in
-      let secret_names, subdirs =
-        List.fold_left
-          (fun (secret_names, subdirs) filename ->
-            match FileUtil.(test (Has_extension ext) filename) with
-            | true -> name_of_file (Path.inject filename) :: secret_names, subdirs
-            | false ->
-            match Sys.is_directory filename with
-            | true -> secret_names, filename :: subdirs
-            | false -> secret_names, subdirs)
-          ([], []) dir_contents
-      in
-      let recipients_and_groups = config_lines keys_file in
-      let groups_names, _recipients = List.partition Age.is_group_recipient @@ recipients_and_groups in
-      let is_recipient_from_groups =
-        List.fold_left
-          (fun is_recipient group ->
-            match
-              ( is_recipient,
-                (try List.mem recipient_name (recipients_of_group_name_exn ~map_fn:Fun.id group) with _ -> false),
-                group = "@everyone" )
-            with
-            | true, _, _ | false, false, false -> is_recipient
-            | _ -> true)
-          false groups_names
-      in
+      let secret_names, subdirs = scan_dir curr_dir in
+      let raw_entries, has_everyone, expanded = resolve_recipients_in_dir curr_dir in
       let accum' =
-        (* We need to check if the recipient is member of recipients_and_groups too
-           because we can use this for groups too, so recipient_name can be a group name *)
-        match List.mem recipient_name recipients_and_groups, is_recipient_from_groups with
-        | false, false -> accum
-        | _ -> List.rev_append accum secret_names
+        (* @everyone acts as a universal wildcard, matching any recipient or group name.
+           Otherwise check both expanded names and raw entries (for group name lookups). *)
+        match has_everyone || List.mem recipient_name expanded || List.mem recipient_name raw_entries with
+        | false -> accum
+        | true -> List.rev_append accum secret_names
       in
       List.fold_left (fun accum subdir -> get_secrets subdir accum) accum' subdirs
     in
     get_secrets (get_secrets_dir ()) []
+
+  let all_recipient_secrets () =
+    let add_secrets_for tbl recipient secret_names =
+      let existing =
+        match Hashtbl.find_opt tbl recipient with
+        | Some l -> l
+        | None -> []
+      in
+      Hashtbl.replace tbl recipient (List.rev_append secret_names existing)
+    in
+    let rec collect curr_dir tbl =
+      let secret_names, subdirs = scan_dir curr_dir in
+      let tbl =
+        match secret_names with
+        | [] -> tbl
+        | _ ->
+          let _raw_entries, _has_everyone, expanded = resolve_recipients_in_dir curr_dir in
+          List.iter (fun name -> add_secrets_for tbl name secret_names) expanded;
+          tbl
+      in
+      List.fold_left (fun tbl subdir -> collect subdir tbl) tbl subdirs
+    in
+    collect (get_secrets_dir ()) (Hashtbl.create 256)
 
   (** Returns the path to the .keys file for a secret *)
   let get_recipients_file_path path_to_secret =
@@ -270,7 +292,8 @@ module Secrets = struct
             skipped, refreshed, failed + 1)
         (0, 0, 0) secrets
     in
-    ksprintf prerr_endline "I: refreshed %d secrets, skipped %d, failed %d" refreshed skipped failed
+    ksprintf prerr_endline "I: refreshed %d secrets, skipped %d, failed %d" refreshed skipped failed;
+    refreshed, skipped, failed
 
   let rm ~is_directory path =
     try

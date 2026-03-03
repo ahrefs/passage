@@ -293,6 +293,44 @@ module Recipients = struct
           | _ -> ());
           print_endline recipient_name)
         recipients_names
+
+  let find_overlap ?use_sudo ~limit () =
+    let own_recipients = Storage.Secrets.recipients_of_own_id ?use_sudo () in
+    let own_names = List.map (fun r -> r.Age.name) own_recipients in
+    let all_secrets = Storage.Secrets.all_recipient_secrets () in
+    let my_secrets =
+      List.concat_map
+        (fun name ->
+          match Hashtbl.find_opt all_secrets name with
+          | Some s -> s
+          | None -> [])
+        own_names
+      |> List.sort_uniq Storage.Secret_name.compare
+    in
+    let my_total = List.length my_secrets in
+    let my_set = Hashtbl.create (my_total * 2) in
+    List.iter (fun s -> Hashtbl.replace my_set (Storage.Secret_name.project s) ()) my_secrets;
+    let all_recipient_names = Storage.Keys.all_recipient_names () in
+    let other_recipients = List.filter (fun r -> not (List.mem r own_names)) all_recipient_names in
+    let overlaps =
+      List.filter_map
+        (fun recipient ->
+          let their_secrets =
+            match Hashtbl.find_opt all_secrets recipient with
+            | Some s -> s
+            | None -> []
+          in
+          let overlap_count =
+            List.length (List.filter (fun s -> Hashtbl.mem my_set (Storage.Secret_name.project s)) their_secrets)
+          in
+          match overlap_count with
+          | 0 -> None
+          | _ -> Some (recipient, overlap_count))
+        other_recipients
+    in
+    let sorted = List.sort (fun (_, a) (_, b) -> Int.compare b a) overlaps in
+    let limited = List.filteri (fun i _ -> i < limit) sorted in
+    limited, my_total
 end
 
 module Refresh = struct

@@ -31,7 +31,7 @@ If there's a `make` command available, don't use dune or opam directly. Availabl
 ### Structure
 
 **bin/** - CLI application:
-- `main.ml` - Entry point with all commands as Cmdliner modules (Add_who, Create, Edit_cmd, Get, Healthcheck, Init, List_, New, Realpath, Refresh, Replace, Rm, Search, Show, Subst, Template_cmd, What, Who, etc.)
+- `main.ml` - Entry point with all commands as Cmdliner modules (Add_who, Create, Edit_cmd, Get, Healthcheck, Init, List_, New, Overlap, Realpath, Refresh, Replace, Rm, Search, Show, Subst, Template_cmd, What, Who, etc.)
 - `prompt.ml` - Terminal prompts, yes/no dialogs, stdin input validation, editor integration for interactive editing
 - `comment_input.ml` - Helper for capturing multi-line comment input from users
 - `retry.ml` - Encryption retry logic with error recovery

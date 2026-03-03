@@ -49,6 +49,7 @@ module Secrets : sig
   val recipient_of_name : string -> Age.recipient
   val recipients_of_group_name_exn : map_fn:(string -> 'a) -> string -> 'a list
   val get_secrets_for_recipient : string -> Secret_name.t list
+  val all_recipient_secrets : unit -> (string, Secret_name.t list) Hashtbl.t
   val get_recipients_file_path : Path.t -> Path.t
   val get_recipients_names : Path.t -> string list
   val get_recipients_from_path_exn : Path.t -> Age.recipient list
@@ -56,7 +57,7 @@ module Secrets : sig
   val encrypt_exn :
     ?use_sudo:bool -> ?verbose:bool -> plaintext:string -> secret_name:Secret_name.t -> Age.recipient list -> unit
   val decrypt_exn : ?use_sudo:bool -> ?silence_stderr:bool -> Secret_name.t -> string
-  val refresh : ?use_sudo:bool -> verbose:bool -> ?force:bool -> Secret_name.t list -> unit
+  val refresh : ?use_sudo:bool -> verbose:bool -> ?force:bool -> Secret_name.t list -> int * int * int
   val rm : is_directory:bool -> Path.t -> unit outcome
   val search : ?use_sudo:bool -> Secret_name.t -> Re.re -> bool outcome
   val recipients_of_own_id : ?use_sudo:bool -> unit -> Age.recipient list

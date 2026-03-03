@@ -24,6 +24,7 @@ module Recipients : sig
   val remove_recipients_from_secret : ?use_sudo:bool -> Storage.Secret_name.t -> string list -> unit
   val list_recipient_secrets : ?use_sudo:bool -> ?verbose:bool -> string list -> unit
   val list_recipients : Path.t -> bool -> unit
+  val find_overlap : ?use_sudo:bool -> limit:int -> unit -> (string * int) list * int
 end
 
 module Refresh : sig

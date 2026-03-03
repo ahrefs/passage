@@ -756,6 +756,35 @@ module My = struct
     Cmd.v info term
 end
 
+module Overlap = struct
+  let limit =
+    let doc = "maximum number of results to show" in
+    Arg.(value & opt int 5 & info [ "n"; "limit" ] ~docv:"N" ~doc)
+
+  let overlap =
+    let doc = "find recipients with the most secret overlap with you, to help coordinate refreshes" in
+    let info = Cmd.info "overlap" ~doc in
+    let term =
+      Term.(
+        const (fun limit ->
+          try
+            let overlaps, my_total = Commands.Recipients.find_overlap ~limit () in
+            Printf.printf "Your secrets: %d total\n\n" my_total;
+            match overlaps with
+            | [] -> Printf.printf "No other recipients found with overlapping secrets.\n"
+            | _ ->
+              Printf.printf "Recipients with most overlap:\n";
+              List.iter
+                (fun (name, count) ->
+                  Printf.printf "  %-30s %d/%d (%.1f%%)\n" name count my_total
+                    (100.0 *. Float.of_int count /. Float.of_int my_total))
+                overlaps
+          with Failure s -> Shell.die "%s" s)
+        $ limit)
+    in
+    Cmd.v info term
+end
+
 module Who = struct
   let expand_groups =
     let doc = "Expand groups of recipients in the output." in
@@ -842,6 +871,7 @@ let () =
       List_.ls;
       My.my;
       New.new_;
+      Overlap.overlap;
       Realpath.realpath;
       Refresh.refresh;
       Replace.replace;
