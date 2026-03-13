@@ -1,6 +1,16 @@
 name: Build & Test
 
-on: [push, pull_request]
+on:
+  push:
+    branches:
+      - "**"
+    tags:
+      - "*"
+  pull_request:
+
+permissions:
+  contents: write
+  pull-requests: write
 
 jobs:
   build:
@@ -32,6 +42,32 @@ jobs:
 
     - name: Test
       run: opam exec -- dune runtest
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout tree
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set-up OCaml
+        uses: ocaml/setup-ocaml@v3
+        with:
+          ocaml-compiler: "4.14.0"
+
+      - name: Install OCaml deps
+        run: opam install . --deps-only --with-test
+
+      - name: Install dune-release
+        run: opam install dune-release -y
+
+      - name: Dune release
+        uses: davesnx/dune-release-action@v0.2.14
+        with:
+          packages: passage
+          github-token: ${{ secrets.GH_TOKEN }}
 
   lint-fmt:
     runs-on: ubuntu-latest
