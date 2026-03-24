@@ -1,6 +1,4 @@
 open Printf
-
-(** Read lines from a config file, filtering out comments and empty lines *)
 let config_lines filename =
   if not (Sys.file_exists filename) then []
   else
@@ -12,8 +10,14 @@ let config_lines filename =
       in
       read_lines []
       |> List.filter_map (fun line ->
-        let trimmed = String.trim line in
-        if trimmed = "" || String.starts_with ~prefix:"#" trimmed then None else Some trimmed))
+        let content =
+          match String.index_opt line '#' with
+          | None -> line
+          | Some i -> String.sub line 0 i
+        in
+        match String.trim content with
+        | "" -> None
+        | s -> Some s))
 
 let save_as ?(mode = 0o644) ~path f =
   let temp = Printf.sprintf "%s.save.%d.tmp" path (Unix.getpid ()) in
