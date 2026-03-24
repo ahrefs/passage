@@ -1,10 +1,11 @@
-## Unreleased
+# Unreleased
 
+## 0.3.4 (2026-03-24)
 - `passage init` does not overwrite previous config unless `--force` is passed.
 - Newline can be used to terminate user name input.
 - Add `overlap` command to find recipients with the most secret overlap, to help coordinate key refreshes.
 - `passage refresh` now warns when secrets are skipped due to lack of access.
-- Fix bug where in-line comments in .pub, .keys and .group files were not ignored ([#20](https://github.com/ahrefs/passage/pull/20))
+- Fix bug where in-line comments in .pub, .keys and .group files were not ignored ([#20](https://github.com/ahrefs/passage/pull/20)).
 
 ## 0.3.3 (2026-02-13)
 - Update os availability in opam. Make passage available in macos again
