@@ -1,3 +1,8 @@
+(** Read lines from a config file, filtering out comments and empty lines.
+
+    Based on Devkit's [Action.config_lines]. *)
+val config_lines : string -> string list
+
 (** File output protected with atomic rename.
 
     [save_as path f] is similar to {!Out_channel.with_open_bin} except that writing is done to a temporary file that
