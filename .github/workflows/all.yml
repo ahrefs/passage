@@ -53,6 +53,7 @@ jobs:
       with:
         packages: passage
         github-token: ${{ secrets.GH_TOKEN }}
+        changelog: ./CHANGES.md
 
   lint-fmt:
     runs-on: ubuntu-latest
