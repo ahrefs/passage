@@ -1,16 +1,6 @@
 name: Build & Test
 
-on:
-  push:
-    branches:
-      - "**"
-    tags:
-      - "*"
-  pull_request:
-
-permissions:
-  contents: write
-  pull-requests: write
+on: [push, pull_request]
 
 jobs:
   build:
@@ -42,18 +32,6 @@ jobs:
 
     - name: Test
       run: opam exec -- dune runtest
-
-    - name: Install dune-release
-      if: startsWith(github.ref, 'refs/tags/') && matrix.os == 'ubuntu-latest'
-      run: opam install dune-release -y
-
-    - name: Dune release
-      if: startsWith(github.ref, 'refs/tags/') && matrix.os == 'ubuntu-latest'
-      uses: davesnx/dune-release-action@v0.2.14
-      with:
-        packages: passage
-        github-token: ${{ secrets.GH_TOKEN }}
-        changelog: ./CHANGES.md
 
   lint-fmt:
     runs-on: ubuntu-latest
