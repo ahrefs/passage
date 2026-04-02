@@ -1,5 +1,9 @@
 # Unreleased
 
+## 0.3.5 (2026-04-02)
+
+- Fix missing --version number.
+
 ## 0.3.4 (2026-03-24)
 - `passage init` does not overwrite previous config unless `--force` is passed.
 - Newline can be used to terminate user name input.
