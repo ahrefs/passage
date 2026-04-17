@@ -27,3 +27,6 @@ clean:
 .PHONY: top
 top:
 	dune utop .
+
+init:
+	opam switch create . --deps-only --with-test --with-doc --with-dev-setup --yes
