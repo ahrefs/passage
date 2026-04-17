@@ -22,12 +22,19 @@ let decrypt_string ?use_sudo ~identity_file ~silence_stderr ciphertext =
   let raw_command = Printf.sprintf "age --decrypt --identity %s" (Filename.quote identity_file) in
   Shell.run_cmd ~stdin ~silence_stderr ~stdout ?use_sudo raw_command
 
-let encrypt_string ?use_sudo ~recipients plaintext =
+let encrypt_string_to_file ?(use_sudo = false) ~recipients ~path plaintext =
+  let path = Fpath.v path in
   let stdin = Bos.OS.Cmd.in_string plaintext in
   let stdout = Bos.OS.Cmd.out_string in
   let recipient_keys = get_recipients_keys recipients |> Key.project_list |> List.sort_uniq String.compare in
-  let recipients_arg =
-    List.map (fun key -> Printf.sprintf "--recipient %s" (Filename.quote key)) recipient_keys |> String.concat " "
+  let cmd =
+    Bos.Cmd.(v "age" % "--encrypt" % "--armor" % "--output" % p path %% of_list ~slip:"--recipient" recipient_keys)
   in
-  let raw_command = Printf.sprintf "age --encrypt --armor %s" recipients_arg in
-  Shell.run_cmd ~stdin ~stdout ?use_sudo raw_command
+  let cmd = if use_sudo then Bos.Cmd.(v "sudo" %% cmd) else cmd in
+  match stdin |> Bos.OS.Cmd.run_io cmd |> stdout with
+  | Ok (_result, s) ->
+    (match s with
+    | _i, `Exited 0 -> ()
+    | _i, `Exited n -> Exn.die "%s : exit code %d" (Bos.Cmd.to_string cmd) n
+    | _, `Signaled n -> Exn.die "%s : stopped %d" (Bos.Cmd.to_string cmd) n)
+  | Error (`Msg m) -> Exn.die "%s: %s" (Bos.Cmd.to_string cmd) m
