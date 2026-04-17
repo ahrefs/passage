@@ -34,6 +34,10 @@
   (menhir
    (>= 20231231))
   (ppx_expect :with-test)
+  (bisect_ppx
+   (and
+    :with-dev-setup
+    (>= 2.5.0)))
   (ocamlformat
    (and
     :with-dev-setup
