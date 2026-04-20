@@ -16,4 +16,8 @@ val recipient_compare : recipient -> recipient -> int
 val is_group_recipient : string -> bool
 val get_recipients_keys : recipient list -> Key.t list
 val decrypt_string : ?use_sudo:bool -> identity_file:string -> silence_stderr:bool -> string -> string
-val encrypt_string : ?use_sudo:bool -> recipients:recipient list -> string -> string
+
+(** Encrypt string for [recipients] using age and write to [path].
+
+    If [use_sudo] is true, the call to [age] is done through [sudo]. *)
+val encrypt_string_to_file : ?use_sudo:bool -> recipients:recipient list -> path:string -> string -> unit

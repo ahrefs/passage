@@ -22,12 +22,12 @@ let decrypt_string ?use_sudo ~identity_file ~silence_stderr ciphertext =
   let raw_command = Printf.sprintf "age --decrypt --identity %s" (Filename.quote identity_file) in
   Shell.run_cmd ~stdin ~silence_stderr ~stdout ?use_sudo raw_command
 
-let encrypt_string ?use_sudo ~recipients plaintext =
+let encrypt_string_to_file ?use_sudo ~recipients ~path plaintext =
   let stdin = Bos.OS.Cmd.in_string plaintext in
-  let stdout = Bos.OS.Cmd.out_string in
+  let stdout = Bos.OS.Cmd.out_null in
   let recipient_keys = get_recipients_keys recipients |> Key.project_list |> List.sort_uniq String.compare in
   let recipients_arg =
     List.map (fun key -> Printf.sprintf "--recipient %s" (Filename.quote key)) recipient_keys |> String.concat " "
   in
-  let raw_command = Printf.sprintf "age --encrypt --armor %s" recipients_arg in
+  let raw_command = Printf.sprintf "age --encrypt --armor %s --output %s" recipients_arg (Filename.quote path) in
   Shell.run_cmd ~stdin ~stdout ?use_sudo raw_command
