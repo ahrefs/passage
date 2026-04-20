@@ -16,4 +16,4 @@ val recipient_compare : recipient -> recipient -> int
 val is_group_recipient : string -> bool
 val get_recipients_keys : recipient list -> Key.t list
 val decrypt_string : ?use_sudo:bool -> identity_file:string -> silence_stderr:bool -> string -> string
-val encrypt_string : ?use_sudo:bool -> recipients:recipient list -> string -> string
+val encrypt_string_to_file : ?use_sudo:bool -> recipients:recipient list -> path:string -> string -> unit
