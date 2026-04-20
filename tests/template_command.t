@@ -71,8 +71,8 @@ Should fail - no identity file
 Should fail - no identity file
   $ PASSAGE_IDENTITY=poppy.pop.key passage template $PASSAGE_DIR/templates/multiple_secrets.txt
   E: failed to decrypt 2 secrets:
-    - multiple_secrets_1: unable to decrypt secret: age --decrypt --identity '$TESTCASE_ROOT/poppy.pop.key' : exit code 1
-    - multiple_secrets_2: unable to decrypt secret: age --decrypt --identity '$TESTCASE_ROOT/poppy.pop.key' : exit code 1
+    - multiple_secrets_1: unable to decrypt secret: age --decrypt --identity $TESTCASE_ROOT/poppy.pop.key : exit code 1
+    - multiple_secrets_2: unable to decrypt secret: age --decrypt --identity $TESTCASE_ROOT/poppy.pop.key : exit code 1
   [1]
 
 Should fail - unable to decrypt a secret
