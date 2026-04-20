@@ -1,4 +1,4 @@
-#!/usr/env/sh
+#!/usr/bin/env sh
 
 BOBBY="bobby.bob"
 DOBBY="dobby.dob"
