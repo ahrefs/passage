@@ -18,6 +18,7 @@ depends: [
   "menhir" {>= "20231231"}
   "ppx_expect" {with-test}
   "bisect_ppx" {with-dev-setup & = "~dev"}
+  # ppxlib >= 0.35.0 is not compatible with our version of bisect_ppx.
   "ppxlib" {with-dev-setup & <= "0.35.0"}
   "ocamlformat" {with-dev-setup & = "0.28.1"}
   "qrc"
@@ -41,4 +42,5 @@ build: [
 ]
 available: os != "win32"
 x-maintenance-intent: ["(latest)"]
+# Since the latest release of bisect_ppx, 2.8.3, is not compatible with cmdliner.
 pin-depends: ["bisect_ppx.~dev" "https://github.com/aantron/bisect_ppx/archive/2d8dffbbfc0c431a37319d4d9a143836c9ec542e.zip"]
