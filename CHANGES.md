@@ -1,4 +1,6 @@
-# Unreleased
+# Changes
+
+## Unreleased
 
 ## 0.3.5 (2026-04-02)
 
