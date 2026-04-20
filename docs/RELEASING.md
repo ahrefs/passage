@@ -1,7 +1,7 @@
 # Release workflow
 
 1. Update changelog in `CHANGES.md` (rename section `## Unreleased` to `## X.Y.Z (YYYY-MM-DD)` and add a new `## Unreleased` section).
-2. Update version number in `dune-project` and `dune build passage.opam` .
+2. Update version number in `passage.opam`
 3. Commit changes to `master` with message `v X.Y.Z`.
 4. Create an *annotated* tag named `X.Y.Z` using `dune-release tag X.Y.Z`:
    Ensure that `git describe --always --dirty --abbrev=7` reports exactly `X.Y.Z`.
