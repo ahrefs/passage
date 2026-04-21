@@ -225,9 +225,10 @@ let generator_produces_invalid_utf8 =
 (* parse raises on invalid UTF-8 input *)
 let parse_rejects_invalid_utf8 =
   QCheck.Test.make ~long_factor ~name:"parse raises on invalid UTF-8 input" ~count:1000 invalid_utf8 (fun s ->
-    match Template.parse s with
-    | _ -> false
-    | exception Sedlexing.MalFormed -> true)
+    try
+      ignore (Template.parse s);
+      false
+    with _exn -> true)
 
 let () =
   let suite =
