@@ -42,4 +42,4 @@ let secrets t =
       | Template_ast.Iden name -> Some name)
     t
 
-let dump t = List.map Template_ast.to_string t |> String.concat " "
+let dump t = List.map Template_ast.to_string t |> String.concat ""
