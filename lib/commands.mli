@@ -32,7 +32,7 @@ module Refresh : sig
 end
 
 module Template : sig
-  val substitute : template:Template_ast.ast_node list -> string
+  val substitute : template:Template.t -> string
   val substitute_file : template_file:Path.t -> string
   val list_template_secrets : Path.t -> string list
 end

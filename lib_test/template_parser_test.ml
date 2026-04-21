@@ -1,11 +1,9 @@
 open Passage
 
-let pp ast = List.map Template_ast.to_string ast |> String.concat " " |> print_endline
-
-let test_parse_success s = pp (Template.parse s)
+let test_parse_success s = print_endline (Template.dump (Template.parse s))
 let test_parse_failure s =
   try
-    let (_ : Template_ast.ast) = Template.parse s in
+    let (_ : Template.t) = Template.parse s in
     ()
   with exn -> print_endline (Printexc.to_string exn)
 
@@ -108,3 +106,36 @@ let%expect_test "non-consecutive valid identifiers" =
 let%expect_test "multiple lines with text before and after identifier" =
   test_parse_success "hello\n{{{abcdefghi}}} world\n!";
   [%expect {| Text("hello\n") Iden("abcdefghi") Text(" world\n!") |}]
+
+let%expect_test "substitute_all succeeds" =
+  let t = Template.parse "hello {{{secret1}}} and {{{secret2}}}!" in
+  let substitute = function
+    | "secret1" -> Ok "VALUE1"
+    | "secret2" -> Ok "VALUE2"
+    | name -> Error (Printf.sprintf "unknown: %s" name)
+  in
+  (match Template.substitute_all ~substitute t with
+  | Ok text -> print_endline text
+  | Error _ -> print_endline "ERROR");
+  [%expect {| hello VALUE1 and VALUE2! |}]
+
+let%expect_test "substitute_all partial failure" =
+  let t = Template.parse "{{{good}}} and {{{bad1}}} and {{{bad2}}}" in
+  let substitute = function
+    | "good" -> Ok "OK"
+    | name -> Error (Printf.sprintf "fail: %s" name)
+  in
+  (match Template.substitute_all ~substitute t with
+  | Ok _ -> print_endline "unexpected success"
+  | Error failures -> List.iter (fun (name, msg) -> Printf.printf "%s: %s\n" name msg) failures);
+  [%expect {|
+    bad1: fail: bad1
+    bad2: fail: bad2 |}]
+
+let%expect_test "identifiers" =
+  let t = Template.parse "text {{{a}}} more {{{b}}} text {{{a}}}" in
+  List.iter print_endline (Template.secrets t);
+  [%expect {|
+    a
+    b
+    a |}]

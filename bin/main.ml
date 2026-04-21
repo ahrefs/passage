@@ -26,7 +26,7 @@ module Converters = struct
 
   let template_arg =
     let parse template = try Ok (Template.parse template) with Failure s -> Error (`Msg s) in
-    let print ppf p = Format.fprintf ppf "%s" (String.concat " " (List.map Template_ast.to_string p)) in
+    let print ppf p = Format.fprintf ppf "%s" (Template.dump p) in
     Arg.conv (parse, print)
 
   let file_arg =

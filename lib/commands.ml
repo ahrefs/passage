@@ -378,10 +378,19 @@ module Refresh = struct
 end
 
 module Template = struct
-  open Template
+  let try_substitute_iden name =
+    let secret_name = Storage.Secret_name.inject name in
+    try
+      let plaintext = Util.Secret.decrypt_silently secret_name in
+      let secret = Secret.Validation.parse_exn plaintext in
+      Ok secret.text
+    with
+    | Failure s -> Error (Printf.sprintf "unable to decrypt secret: %s" s)
+    | exn -> Error (Printf.sprintf "could not decrypt secret: %s" (Printexc.to_string exn))
+
   let substitute ~template =
-    match substitute_all template with
-    | Ok substituted_ast -> build_text_from_ast substituted_ast
+    match Template.substitute_all ~substitute:try_substitute_iden template with
+    | Ok text -> text
     | Error failures ->
       let n = List.length failures in
       eprintfn "E: failed to decrypt %d %s:" n (if n = 1 then "secret" else "secrets");
@@ -389,18 +398,12 @@ module Template = struct
       exit 1
 
   let substitute_file ~template_file =
-    let template = parse_file template_file in
+    let template = Template.parse_file template_file in
     substitute ~template
 
   let list_template_secrets template_file =
-    let tree = try parse_file template_file with exn -> die ~exn "Failed to parse the file" in
-    List.filter_map
-      (fun node ->
-        match node with
-        | Template_ast.Text _ -> None
-        | Template_ast.Iden secret_name -> Some secret_name)
-      tree
-    |> List.sort_uniq String.compare
+    let tree = try Template.parse_file template_file with exn -> die ~exn "Failed to parse the file" in
+    Template.secrets tree |> List.sort_uniq String.compare
 end
 
 module Realpath = struct
