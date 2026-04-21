@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Fix a deadlock in `encrypt_string` ([#25](https://github.com/ahrefs/passage/pull/25))
+
 ## 0.3.5 (2026-04-02)
 
 - Fix missing --version number.

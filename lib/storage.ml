@@ -249,8 +249,15 @@ module Secrets = struct
   *)
   let encrypt_using_tmpfile ~secret_name ~plaintext ?use_sudo recipients =
     let secret_file = Path.(agefile_of_name secret_name |> abs |> project) in
-    let encrypted_content = Age.encrypt_string ?use_sudo ~recipients plaintext in
-    save_as ~path:secret_file @@ fun oc -> output_string oc encrypted_content
+    let temp = Printf.sprintf "%s.save.%d.tmp" secret_file (Unix.getpid ()) in
+    Fun.protect ~finally:(fun () ->
+      if Sys.file_exists temp then (
+        Printf.eprintf "Encryption failed, purging temp file: %s\n" temp;
+        Unix.unlink temp))
+    @@ fun () ->
+    Age.encrypt_string_to_file ?use_sudo ~recipients ~path:temp plaintext;
+    Unix.chmod temp 0o644;
+    Unix.rename temp secret_file
 
   let encrypt_exn ?use_sudo ?(verbose = false) ~plaintext ~secret_name recipients =
     verbose_eprintlf ~verbose "I: encrypting %s for %s" (Secret_name.project secret_name)
