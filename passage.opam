@@ -15,7 +15,6 @@ depends: [
   "dune" {>= "3.9"}
   "fileutils"
   "fpath"
-  "menhir" {>= "20231231"}
   "ppx_expect" {with-test}
   "qcheck-core" {with-test}
   "bisect_ppx" {with-dev-setup & = "~dev"}
@@ -24,7 +23,6 @@ depends: [
   "ocamlformat" {with-dev-setup & = "0.28.1"}
   "qrc"
   "re" {>= "1.14.0"}
-  "sedlex"
   "odoc" {with-doc}
 ]
 dev-repo: "git+https://github.com/ahrefs/passage.git"
