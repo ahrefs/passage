@@ -113,6 +113,11 @@ let roundtrip_via_substitute =
     let t = Template.parse s in
     Template.substitute_all ~substitute:substitute_identity t = Ok s)
 
+let compare_with_ref =
+  QCheck.Test.make ~long_factor ~name:"compare with ref" ~count:1000 template_string (fun s ->
+    let substitute s = Ok (String.capitalize_ascii s) in
+    Template.(substitute_all ~substitute (parse s)) = Template_old.(substitute_all ~substitute (parse s)))
+
 (* parse never raises on valid UTF-8 input *)
 let parse_never_raises =
   QCheck.Test.make ~long_factor ~name:"parse never raises on valid UTF-8 input" ~count:1000 template_string (fun s ->
@@ -235,6 +240,7 @@ let () =
     [
       generator_produces_valid_utf8;
       roundtrip_via_substitute;
+      compare_with_ref;
       parse_never_raises;
       no_secrets_means_pure_text;
       substitute_calls_match_secrets;
