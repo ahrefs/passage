@@ -17,4 +17,4 @@ dune runtest --instrument-with bisect_ppx --force "$@" || true
 echo "==> Generating coverage report..."
 bisect-ppx-report summary --coverage-path "$BISECT_FILE" --per-file
 bisect-ppx-report html --coverage-path "$BISECT_FILE" --tree
-echo "Report generated in file://$(pwd)/_coverage/index.html"
+echo "Report generated in file://${BISECT_FILE}index.html"
