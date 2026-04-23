@@ -1,5 +1,6 @@
 (library
  (name passage_test)
+ (modules :standard \ template_qcheck_test)
  (libraries
   base
   passage
@@ -11,3 +12,8 @@
   (backend bisect_ppx))
  (preprocess
   (pps ppx_expect)))
+
+(test
+ (name template_qcheck_test)
+ (modules template_qcheck_test)
+ (libraries passage qcheck-core qcheck-core.runner))

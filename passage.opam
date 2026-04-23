@@ -15,15 +15,14 @@ depends: [
   "dune" {>= "3.9"}
   "fileutils"
   "fpath"
-  "menhir" {>= "20231231"}
   "ppx_expect" {with-test}
+  "qcheck-core" {with-test}
   "bisect_ppx" {with-dev-setup & = "~dev"}
   # ppxlib >= 0.35.0 is not compatible with our version of bisect_ppx.
   "ppxlib" {with-dev-setup & <= "0.35.0"}
   "ocamlformat" {with-dev-setup & = "0.28.1"}
   "qrc"
   "re" {>= "1.14.0"}
-  "sedlex"
   "odoc" {with-doc}
 ]
 dev-repo: "git+https://github.com/ahrefs/passage.git"
