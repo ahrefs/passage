@@ -2,3 +2,7 @@
  (deps
   (file setup_fixtures.sh)
   %{bin:passage}))
+
+(test
+ (name test_save_as)
+ (libraries passage unix threads.posix))

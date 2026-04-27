@@ -3,6 +3,7 @@
 ## Unreleased
 
 - Fix a deadlock in `encrypt_string` ([#25](https://github.com/ahrefs/passage/pull/25))
+- Fix clobbering of special files in `Storage.save_as` ([#28](https://github.com/ahrefs/passage/pull/28))
 
 ## 0.3.5 (2026-04-02)
 
