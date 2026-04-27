@@ -19,7 +19,7 @@ let config_lines filename =
         | "" -> None
         | s -> Some s))
 
-let save_as ?(mode = 0o644) ~path f =
+let save_as_regular ?(mode = 0o644) ~path f =
   let temp = Printf.sprintf "%s.save.%d.tmp" path (Unix.getpid ()) in
   let fd = Unix.openfile temp [ Unix.O_WRONLY; Unix.O_CREAT ] mode in
   Fun.protect ~finally:(fun () -> Unix.close fd) @@ fun () ->
@@ -32,6 +32,16 @@ let save_as ?(mode = 0o644) ~path f =
   with exn ->
     (try Unix.unlink temp with _ -> ());
     raise exn
+
+let save_as ?mode ~path f =
+  let path =
+    match (Unix.lstat path).st_kind with
+    | Unix.S_LNK -> Unix.realpath path
+    | (exception Unix.Unix_error (Unix.ENOENT, _, _)) | _ -> path
+  in
+  match (Unix.stat path).st_kind with
+  | Unix.S_REG | (exception Unix.Unix_error (Unix.ENOENT, _, _)) -> save_as_regular ?mode ~path f
+  | _ -> Out_channel.with_open_gen [ Open_wronly ] 0 path f
 
 module Secret_name = struct
   include Types.Fresh (String)

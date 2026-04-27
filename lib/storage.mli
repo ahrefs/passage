@@ -5,9 +5,11 @@ val config_lines : string -> string list
 
 (** File output protected with atomic rename.
 
-    [save_as path f] is similar to {!Out_channel.with_open_bin} except that writing is done to a temporary file that
-    will be renamed to [path] after [f] has successfully terminated. This guarantees that either [path] is not modified
-    or contains whatever [f] wrote to it.
+    [save_as path f] is similar to {!Out_channel.with_open_bin} for regular files, except that writing is done to a
+    temporary file that will be renamed to [path]'s absolute path (resolved as per {!Unix.realpath}) after [f] has
+    successfully terminated. This guarantees that either [path] is not modified or contains whatever [f] wrote to it.
+
+    There is no such special treatment for special files, instead they are written to directly.
 
     Mode, if absent, defaults to [0o644].
 
