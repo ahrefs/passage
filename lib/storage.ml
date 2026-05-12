@@ -91,6 +91,9 @@ module Secrets = struct
 
   let to_path secret = secret |> Secret_name.norm_secret |> Secret_name.project |> Path.inject
 
+  (* A secret name is valid if it supports an .age extension -- i.e., it's not root, it doesn't end with ../ *)
+  let valid_name name = Fpath.(v name |> normalize |> basename <> "")
+
   let agefile_of_name name = Path.inject (FilePath.add_extension (Secret_name.project name) ext)
 
   let name_of_file file =
@@ -105,12 +108,7 @@ module Secrets = struct
     try FilePath.add_extension Path.(project @@ abs path) ext |> Sys.file_exists with FilePath.NoExtension _ -> false
 
   let build_secret_name name =
-    try
-      let name = Secret_name.inject name in
-      (* We have this check here to avoid uncaught exns in other spots later *)
-      let (_ : Path.t) = agefile_of_name name in
-      name |> Secret_name.norm_secret
-    with FilePath.NoExtension filename -> Exn.die "%s is not a valid secret" filename
+    if valid_name name then Secret_name.(inject name |> norm_secret) else Exn.die "%s is not a valid secret" name
 
   let get_secrets_tree path =
     let full_path = Path.(project @@ abs path) in
