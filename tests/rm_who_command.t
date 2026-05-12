@@ -72,6 +72,11 @@ Should succeed - warn about some non-existent recipients but remove others
   bobby.bob
   robby.rob
 
+Should succeed - remove secrets from root
+  $ PASSAGE_IDENTITY=bobby.bob.key passage rm-who . dobby.dob
+  I: removed 1 recipient
+
+
 Should fail - remove all recipients from a secret
   $ passage who 02/secret1
   bobby.bob

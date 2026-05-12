@@ -110,6 +110,7 @@ module Secrets = struct
   let build_secret_name name =
     if valid_name name then Secret_name.(inject name |> norm_secret) else Exn.die "%s is not a valid secret" name
 
+  (* True if [path] contains at least one secret, recursively. *)
   let get_secrets_tree path =
     let full_path = Path.(project @@ abs path) in
     FileUtil.find ~follow:Follow (Has_extension ext) full_path (fun accum f -> f :: accum) []

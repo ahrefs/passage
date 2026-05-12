@@ -17,3 +17,6 @@ val ensure_parent : t -> t
 val build_rel_path : string -> t
 val abs : t -> t
 val folder_of_path : t -> t
+
+(** The root path is the secrets dir. *)
+val root : t

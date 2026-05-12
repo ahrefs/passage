@@ -24,6 +24,11 @@ module Converters = struct
     let print ppf p = Format.fprintf ppf "%s" (show_path p) in
     Arg.conv (parse, print)
 
+  let named_path_arg =
+    let parse name = try Ok (Named_path.of_string name) with Failure s -> Error (`Msg s) in
+    let print = Named_path.pp in
+    Arg.conv (parse, print)
+
   let template_arg =
     let parse template = try Ok (Template.parse template) with Failure s -> Error (`Msg s) in
     let print ppf p = Format.fprintf ppf "%s" (Template.dump p) in
@@ -79,6 +84,10 @@ module Flags = struct
     in
     Arg.(value & pos_all string [ "." ] & info [] ~docv:"PATH" ~doc)
 
+  let named_secret_path =
+    let doc = "the relative $(docv) from the secrets directory that will be used to process secrets" in
+    Arg.(value & pos 0 Converters.named_path_arg (Named_path.of_string ".") & info [] ~docv:"PATH" ~doc)
+
   let verbose =
     let doc = "print verbose output during execution" in
     Arg.(value & flag & info [ "v"; "verbose" ] ~doc)
@@ -105,7 +114,7 @@ module Add_who = struct
         const (fun secret_name recipients_to_add ->
           try Commands.Recipients.add_recipients_to_secret secret_name recipients_to_add
           with Failure s -> Shell.die "%s" s)
-        $ Flags.secret_name
+        $ Flags.named_secret_path
         $ recipient_names)
     in
     Cmd.v info term
@@ -124,7 +133,7 @@ module Rm_who = struct
         const (fun secret_name recipients_to_remove ->
           try Commands.Recipients.remove_recipients_from_secret secret_name recipients_to_remove
           with Failure s -> Shell.die "%s" s)
-        $ Flags.secret_name
+        $ Flags.named_secret_path
         $ recipient_names)
     in
     Cmd.v info term
@@ -796,17 +805,17 @@ module Who = struct
     let recipient_spec_arg =
       let parse str =
         if Age.is_group_recipient str then Ok (Commands.Recipients.Group str)
-        else (try Ok (Commands.Recipients.Path (Path.build_rel_path str)) with Failure s -> Error (`Msg s))
+        else (try Ok (Commands.Recipients.Path (Named_path.of_string str)) with Failure s -> Error (`Msg s))
       in
       let print ppf = function
         | Commands.Recipients.Group group -> Format.fprintf ppf "%s" group
-        | Commands.Recipients.Path path -> Format.fprintf ppf "%s" (show_path path)
+        | Commands.Recipients.Path path -> Named_path.pp ppf path
       in
       Arg.conv (parse, print)
     in
     let recipient_spec =
       let doc = "the relative $(docv) from the secrets directory that will be used to process secrets" in
-      Arg.(value & pos 0 recipient_spec_arg (Commands.Recipients.Path (Path.inject ".")) & info [] ~docv:"PATH" ~doc)
+      Arg.(value & pos 0 recipient_spec_arg (Commands.Recipients.Path Named_path.root) & info [] ~docv:"PATH" ~doc)
     in
     let term =
       Term.(
