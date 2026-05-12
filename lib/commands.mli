@@ -18,6 +18,9 @@ module List_ : sig
 end
 
 module Recipients : sig
+  (** Check if [named_path] has an editable list of recipients, or die. *)
+  val check_path_with_recipients : Named_path.t -> unit
+
   val add_recipients_if_none_exists : Age.recipient list -> Named_path.t -> unit
   val rewrite_recipients_file : ?use_sudo:bool -> Named_path.t -> string list -> unit
   val add_recipients_to_secret : ?use_sudo:bool -> Named_path.t -> string list -> unit

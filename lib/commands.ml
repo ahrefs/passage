@@ -173,14 +173,14 @@ module Recipients = struct
       else ())
     else prerr_endline "I: no changes made to the recipients"
 
-  let check_named_path_exists_or_die secret_named_path =
+  let check_path_with_recipients secret_named_path =
     let path = Named_path.path secret_named_path in
     if (not (Storage.Secrets.secret_exists_at path)) && Storage.Secrets.get_secrets_tree path = [] then
       Exn.die "E: no such secret: %s" (Named_path.show secret_named_path)
 
   let add_recipients_to_secret ?use_sudo (secret_name : Named_path.t) recipients_to_add =
     let secret_path = secret_name.path in
-    check_named_path_exists_or_die secret_name;
+    check_path_with_recipients secret_name;
     Invariant.run_if_recipient ~op_string:"add recipients" ~path:secret_path ~f:(fun () ->
       let () =
         match Validation.validate_recipients_for_commands recipients_to_add with
@@ -198,7 +198,7 @@ module Recipients = struct
 
   let remove_recipients_from_secret ?use_sudo (secret_name : Named_path.t) recipients_to_remove =
     let secret_path = Named_path.path secret_name in
-    check_named_path_exists_or_die secret_name;
+    check_path_with_recipients secret_name;
     Invariant.run_if_recipient ~op_string:"remove recipients" ~path:secret_path ~f:(fun () ->
       let current_recipients = Storage.Secrets.get_recipients_names secret_path in
       let new_recipients = List.filter (fun r -> not (List.mem r recipients_to_remove)) current_recipients in
@@ -267,7 +267,7 @@ module Recipients = struct
     | Group group -> Storage.Secrets.recipients_of_group_name_exn group |> print_from_recipient_list
     | Path named_path ->
       let path = named_path.path in
-      check_named_path_exists_or_die named_path;
+      check_path_with_recipients named_path;
       (match expand_groups with
       | true ->
         (match Storage.Secrets.get_recipients_from_path_exn path with
