@@ -132,7 +132,7 @@ module Recipients = struct
     | false -> ()
     | true ->
       (* also adds root group by default for all new secrets *)
-      let root_recipients_names = Storage.Secrets.recipients_of_group_name_exn ~map_fn:Fun.id "@root" in
+      let root_recipients_names = Storage.Secrets.expand_group_exn "@root" in
       let () = eprintfn "\nI: using recipient group @root for secret %s" (show_path secret_path) in
       (* avoid repeating names if the user creating the secret is already in the root group *)
       let recipients_names =
@@ -256,9 +256,7 @@ module Recipients = struct
         recipients
     in
     match Age.is_group_recipient string_path with
-    | true ->
-      Storage.Secrets.recipients_of_group_name_exn ~map_fn:Storage.Secrets.recipient_of_name string_path
-      |> print_from_recipient_list
+    | true -> Storage.Secrets.recipients_of_group_name_exn string_path |> print_from_recipient_list
     | false ->
     match Storage.Secrets.secret_exists_at path || Storage.Secrets.get_secrets_tree path <> [] with
     | false -> die "E: no such secret %s" (show_path path)
@@ -281,9 +279,7 @@ module Recipients = struct
             | true ->
             try
               (* we don't need the group recipients, just to know that there are some *)
-              let (_ : Age.recipient list) =
-                Storage.Secrets.recipients_of_group_name_exn ~map_fn:Storage.Secrets.recipient_of_name recipient_name
-              in
+              let (_ : Age.recipient list) = Storage.Secrets.recipients_of_group_name_exn recipient_name in
               [ Age.Key.inject "" ]
             with exn ->
               printfn "E: couldn't retrieve recipients for group %s. Reason: %s" recipient_name (Printexc.to_string exn);

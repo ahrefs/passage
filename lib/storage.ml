@@ -145,22 +145,20 @@ module Secrets = struct
 
   let recipient_of_name name = { Age.name; keys = Keys.keys_of_recipient name }
 
-  let recipients_of_group_name_exn ~map_fn group_name' =
-    let recipients_names =
-      match group_name' with
-      | "@everyone" -> Keys.all_recipient_names ()
-      | _ ->
-        (* get the name of the group without the '@' at the beginnning *)
-        let group_name = String.sub group_name' 1 (String.length group_name' - 1) in
-        let existing_groups = all_groups_names () in
-        (match List.mem group_name existing_groups with
-        (* We don't want to allow referencing non existent groups *)
-        | false -> Exn.die "E: group %S doesn't exist" group_name'
-        | true ->
-          let group_file = FilePath.concat (Keys.get_keys_dir ()) (FilePath.add_extension group_name groups_ext) in
-          config_lines group_file)
-    in
-    List.map map_fn recipients_names
+  let expand_group_exn = function
+    | "@everyone" -> Keys.all_recipient_names ()
+    | group_name_at ->
+      (* get the name of the group without the '@' at the beginnning *)
+      let group_name = String.sub group_name_at 1 (String.length group_name_at - 1) in
+      let existing_groups = all_groups_names () in
+      (match List.mem group_name existing_groups with
+      (* We don't want to allow referencing non existent groups *)
+      | false -> Exn.die "E: group %S doesn't exist" group_name_at
+      | true ->
+        let group_file = FilePath.concat (Keys.get_keys_dir ()) (FilePath.add_extension group_name groups_ext) in
+        config_lines group_file)
+
+  let recipients_of_group_name_exn group_name = expand_group_exn group_name |> List.map recipient_of_name
 
   (** Scans a directory and returns a list of secret names and subdirectories *)
   let scan_dir dir =
@@ -180,9 +178,7 @@ module Secrets = struct
     let raw_entries = config_lines keys_file in
     let groups_names, direct_names = List.partition Age.is_group_recipient raw_entries in
     let has_everyone = List.mem "@everyone" groups_names in
-    let group_member_names =
-      List.concat_map (fun group -> try recipients_of_group_name_exn ~map_fn:Fun.id group with _ -> []) groups_names
-    in
+    let group_member_names = List.concat_map (fun group -> try expand_group_exn group with _ -> []) groups_names in
     let expanded = List.sort_uniq String.compare (direct_names @ group_member_names) in
     raw_entries, has_everyone, expanded
 
@@ -236,10 +232,7 @@ module Secrets = struct
   let get_recipients_from_path_exn path =
     let recipients' = get_recipients_names path in
     let groups_names, recipients_names = List.partition Age.is_group_recipient recipients' in
-    let groups_recipients =
-      List.map (fun g -> try recipients_of_group_name_exn ~map_fn:recipient_of_name g with _ -> []) groups_names
-      |> List.flatten
-    in
+    let groups_recipients = List.concat_map (fun g -> try recipients_of_group_name_exn g with _ -> []) groups_names in
     let recipients = List.map recipient_of_name recipients_names in
     let sorted = recipients @ groups_recipients |> List.sort Age.recipient_compare in
     List.fold_right

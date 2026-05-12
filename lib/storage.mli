@@ -54,7 +54,8 @@ module Secrets : sig
   val no_keys_file : Path.t -> bool
   val all_groups_names : unit -> string list
   val recipient_of_name : string -> Age.recipient
-  val recipients_of_group_name_exn : map_fn:(string -> 'a) -> string -> 'a list
+  val expand_group_exn : string -> string list
+  val recipients_of_group_name_exn : string -> Age.recipient list
   val get_secrets_for_recipient : string -> Secret_name.t list
   val all_recipient_secrets : unit -> (string, Secret_name.t list) Hashtbl.t
   val get_recipients_file_path : Path.t -> Path.t
