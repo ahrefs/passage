@@ -793,11 +793,26 @@ module Who = struct
   let who =
     let doc = "list all recipients of secrets in the specified path" in
     let info = Cmd.info "who" ~doc in
+    let recipient_spec_arg =
+      let parse str =
+        if Age.is_group_recipient str then Ok (Commands.Recipients.Group str)
+        else (try Ok (Commands.Recipients.Path (Path.build_rel_path str)) with Failure s -> Error (`Msg s))
+      in
+      let print ppf = function
+        | Commands.Recipients.Group group -> Format.fprintf ppf "%s" group
+        | Commands.Recipients.Path path -> Format.fprintf ppf "%s" (show_path path)
+      in
+      Arg.conv (parse, print)
+    in
+    let recipient_spec =
+      let doc = "the relative $(docv) from the secrets directory that will be used to process secrets" in
+      Arg.(value & pos 0 recipient_spec_arg (Commands.Recipients.Path (Path.inject ".")) & info [] ~docv:"PATH" ~doc)
+    in
     let term =
       Term.(
         const (fun secrets_path expand_groups ->
           try Commands.Recipients.list_recipients secrets_path expand_groups with Failure s -> Shell.die "%s" s)
-        $ Flags.secrets_path
+        $ recipient_spec
         $ expand_groups)
     in
     Cmd.v info term

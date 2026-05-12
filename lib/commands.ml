@@ -244,8 +244,11 @@ module Recipients = struct
           flush stderr)
       recipients_names
 
-  let list_recipients path expand_groups =
-    let string_path = show_path path in
+  type recipient_spec =
+    | Group of string
+    | Path of Path.t
+
+  let list_recipients recipient_spec expand_groups =
     let print_from_recipient_list recipients =
       List.iter
         (fun (r : Age.recipient) ->
@@ -255,9 +258,9 @@ module Recipients = struct
           print_endline r.name)
         recipients
     in
-    match Age.is_group_recipient string_path with
-    | true -> Storage.Secrets.recipients_of_group_name_exn string_path |> print_from_recipient_list
-    | false ->
+    match recipient_spec with
+    | Group group -> Storage.Secrets.recipients_of_group_name_exn group |> print_from_recipient_list
+    | Path path ->
     match Storage.Secrets.secret_exists_at path || Storage.Secrets.get_secrets_tree path <> [] with
     | false -> die "E: no such secret %s" (show_path path)
     | true ->
