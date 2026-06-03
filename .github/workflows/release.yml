@@ -1,0 +1,35 @@
+name: Upload release binary
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  upload-binary:
+    runs-on: macos-latest
+    permissions:
+      contents: write
+
+    steps:
+    - name: Checkout tree
+      uses: actions/checkout@v4
+
+    - name: Set-up OCaml
+      uses: ocaml/setup-ocaml@v3
+      with:
+        ocaml-compiler: "5.4.x"
+
+    - name: Install OCaml deps
+      run: opam install . --deps-only
+
+    - name: Build release binary
+      run: opam exec -- dune build --profile release bin/main.exe
+
+    - name: Upload binary to release
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        tag="${{ github.event.release.tag_name }}"
+        asset="passage-${tag}-macos-arm64"
+        cp _build/default/bin/main.exe "$asset"
+        gh release upload "$tag" "$asset" --clobber
