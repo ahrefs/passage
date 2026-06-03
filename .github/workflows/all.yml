@@ -11,7 +11,8 @@ jobs:
           - ubuntu-latest
           - macos-latest
         ocaml-compiler:
-          - "4.14.0"
+          - "4.14.x"
+          - "5.4.x"
 
     runs-on: ${{ matrix.os }}
 
@@ -42,7 +43,7 @@ jobs:
       - name: Set-up OCaml
         uses: ocaml/setup-ocaml@v3
         with:
-          ocaml-compiler: 4.14
+          ocaml-compiler: "5.4.x"
 
       - name: Lint fmt
         uses: ocaml/setup-ocaml/lint-fmt@v3
