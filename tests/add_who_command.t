@@ -60,6 +60,10 @@ Should succeed - no changes when adding existing recipients
   $ passage add-who 02/secret1 bobby.bob poppy.pop
   I: no changes made - all specified recipients are already present
 
+Should succeed - add secrets to root
+  $ PASSAGE_IDENTITY=bobby.bob.key passage add-who . poppy.pop
+  I: added 1 recipient
+
 Should fail - add non-existent recipient
   $ passage add-who 02/secret1 nonexistent.user
   Invalid recipient: nonexistent.user does not exist

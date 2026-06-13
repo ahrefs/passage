@@ -24,6 +24,11 @@ module Converters = struct
     let print ppf p = Format.fprintf ppf "%s" (show_path p) in
     Arg.conv (parse, print)
 
+  let named_path_arg =
+    let parse name = try Ok (Named_path.of_string name) with Failure s -> Error (`Msg s) in
+    let print = Named_path.pp in
+    Arg.conv (parse, print)
+
   let template_arg =
     let parse template = try Ok (Template.parse template) with Failure s -> Error (`Msg s) in
     let print ppf p = Format.fprintf ppf "%s" (Template.dump p) in
@@ -79,6 +84,10 @@ module Flags = struct
     in
     Arg.(value & pos_all string [ "." ] & info [] ~docv:"PATH" ~doc)
 
+  let named_secret_path =
+    let doc = "the relative $(docv) from the secrets directory that will be used to process secrets" in
+    Arg.(value & pos 0 Converters.named_path_arg (Named_path.of_string ".") & info [] ~docv:"PATH" ~doc)
+
   let verbose =
     let doc = "print verbose output during execution" in
     Arg.(value & flag & info [ "v"; "verbose" ] ~doc)
@@ -105,7 +114,7 @@ module Add_who = struct
         const (fun secret_name recipients_to_add ->
           try Commands.Recipients.add_recipients_to_secret secret_name recipients_to_add
           with Failure s -> Shell.die "%s" s)
-        $ Flags.secret_name
+        $ Flags.named_secret_path
         $ recipient_names)
     in
     Cmd.v info term
@@ -124,7 +133,7 @@ module Rm_who = struct
         const (fun secret_name recipients_to_remove ->
           try Commands.Recipients.remove_recipients_from_secret secret_name recipients_to_remove
           with Failure s -> Shell.die "%s" s)
-        $ Flags.secret_name
+        $ Flags.named_secret_path
         $ recipient_names)
     in
     Cmd.v info term
@@ -176,13 +185,12 @@ end
 
 module Edit_who = struct
   let edit_who_with_check secret_name =
-    let secret_path = Storage.Secrets.(to_path secret_name) in
-    match Path.is_directory (Path.abs secret_path), Storage.Secrets.secret_exists_at secret_path with
-    | false, false -> Shell.die "E: no such secret: %s" (show_name secret_name)
-    | _ ->
-      let path = Storage.Secrets.(to_path secret_name) in
-      (try Invariant.run_if_recipient ~op_string:"edit recipients" ~path ~f:(fun () -> edit_recipients secret_name)
-       with Failure s -> Shell.die "%s" s)
+    Commands.Recipients.check_path_with_recipients secret_name;
+    let secret_path = Named_path.path secret_name in
+    try
+      Invariant.run_if_recipient ~op_string:"edit recipients" ~path:secret_path ~f:(fun () ->
+        edit_recipients (Named_path.to_secret_name secret_name))
+    with Failure s -> Shell.die "%s" s
 
   let edit_who =
     let doc =
@@ -190,7 +198,7 @@ module Edit_who = struct
       \  in the tree, so all recipients need to be specified at the level of the immediately containing folder."
     in
     let info = Cmd.info "edit-who" ~doc in
-    let term = Term.(const edit_who_with_check $ Flags.secret_name) in
+    let term = Term.(const edit_who_with_check $ Flags.named_secret_path) in
     Cmd.v info term
 end
 
@@ -793,11 +801,26 @@ module Who = struct
   let who =
     let doc = "list all recipients of secrets in the specified path" in
     let info = Cmd.info "who" ~doc in
+    let recipient_spec_arg =
+      let parse str =
+        if Age.is_group_recipient str then Ok (Commands.Recipients.Group str)
+        else (try Ok (Commands.Recipients.Path (Named_path.of_string str)) with Failure s -> Error (`Msg s))
+      in
+      let print ppf = function
+        | Commands.Recipients.Group group -> Format.fprintf ppf "%s" group
+        | Commands.Recipients.Path path -> Named_path.pp ppf path
+      in
+      Arg.conv (parse, print)
+    in
+    let recipient_spec =
+      let doc = "the relative $(docv) from the secrets directory that will be used to process secrets" in
+      Arg.(value & pos 0 recipient_spec_arg (Commands.Recipients.Path Named_path.root) & info [] ~docv:"PATH" ~doc)
+    in
     let term =
       Term.(
         const (fun secrets_path expand_groups ->
           try Commands.Recipients.list_recipients secrets_path expand_groups with Failure s -> Shell.die "%s" s)
-        $ Flags.secrets_path
+        $ recipient_spec
         $ expand_groups)
     in
     Cmd.v info term

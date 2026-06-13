@@ -128,12 +128,12 @@ end
 
 module Recipients = struct
   let add_recipients_if_none_exists recipients secret_path =
-    match Storage.Secrets.no_keys_file (Path.dirname secret_path) with
+    match Storage.Secrets.no_keys_file (Path.dirname (Named_path.path secret_path)) with
     | false -> ()
     | true ->
       (* also adds root group by default for all new secrets *)
-      let root_recipients_names = Storage.Secrets.recipients_of_group_name_exn ~map_fn:Fun.id "@root" in
-      let () = eprintfn "\nI: using recipient group @root for secret %s" (show_path secret_path) in
+      let root_recipients_names = Storage.Secrets.expand_group_exn "@root" in
+      let () = eprintfn "\nI: using recipient group @root for secret %s" (Named_path.show secret_path) in
       (* avoid repeating names if the user creating the secret is already in the root group *)
       let recipients_names =
         List.filter_map
@@ -141,19 +141,19 @@ module Recipients = struct
             match List.mem r.Age.name root_recipients_names with
             | true -> None
             | false ->
-              let () = eprintfn "I: using recipient %s for secret %s" r.name (show_path secret_path) in
+              let () = eprintfn "I: using recipient %s for secret %s" r.name (Named_path.show secret_path) in
               Some r.name)
           recipients
       in
       let () = flush stderr in
       let recipients_names_with_root_group = "@root" :: (recipients_names |> List.sort String.compare) in
-      let recipients_file_path = Storage.Secrets.get_recipients_file_path secret_path in
+      let recipients_file_path = Storage.Secrets.get_recipients_file_path (Named_path.path secret_path) in
       let (_ : Path.t) = Path.ensure_parent recipients_file_path in
       Storage.save_as ~mode:0o666 ~path:(show_path recipients_file_path) @@ fun oc ->
       List.iter (fun line -> Printf.fprintf oc "%s\n" line) recipients_names_with_root_group
 
-  let rewrite_recipients_file ?use_sudo secret_name new_recipients_list =
-    let secret_path = path_of_secret_name secret_name in
+  let rewrite_recipients_file ?use_sudo (secret_name : Named_path.t) new_recipients_list =
+    let secret_path = Named_path.path secret_name in
     let sorted_base_recipients = Storage.Secrets.get_recipients_names secret_path in
     let secret_recipients_file = Storage.Secrets.get_recipients_file_path secret_path in
     let (_ : Path.t) = Path.ensure_parent secret_recipients_file in
@@ -173,9 +173,14 @@ module Recipients = struct
       else ())
     else prerr_endline "I: no changes made to the recipients"
 
-  let add_recipients_to_secret ?use_sudo secret_name recipients_to_add =
-    let secret_path = path_of_secret_name secret_name in
-    Util.Secret.check_path_exists_or_die secret_name secret_path;
+  let check_path_with_recipients secret_named_path =
+    let path = Named_path.path secret_named_path in
+    if (not (Storage.Secrets.secret_exists_at path)) && Storage.Secrets.get_secrets_tree path = [] then
+      Exn.die "E: no such secret: %s" (Named_path.show secret_named_path)
+
+  let add_recipients_to_secret ?use_sudo (secret_name : Named_path.t) recipients_to_add =
+    let secret_path = secret_name.path in
+    check_path_with_recipients secret_name;
     Invariant.run_if_recipient ~op_string:"add recipients" ~path:secret_path ~f:(fun () ->
       let () =
         match Validation.validate_recipients_for_commands recipients_to_add with
@@ -191,9 +196,9 @@ module Recipients = struct
         let added_count = List.length new_recipients - List.length current_recipients in
         eprintfn "I: added %d recipient%s" added_count (if added_count = 1 then "" else "s"))
 
-  let remove_recipients_from_secret ?use_sudo secret_name recipients_to_remove =
-    let secret_path = path_of_secret_name secret_name in
-    Util.Secret.check_path_exists_or_die secret_name secret_path;
+  let remove_recipients_from_secret ?use_sudo (secret_name : Named_path.t) recipients_to_remove =
+    let secret_path = Named_path.path secret_name in
+    check_path_with_recipients secret_name;
     Invariant.run_if_recipient ~op_string:"remove recipients" ~path:secret_path ~f:(fun () ->
       let current_recipients = Storage.Secrets.get_recipients_names secret_path in
       let new_recipients = List.filter (fun r -> not (List.mem r recipients_to_remove)) current_recipients in
@@ -244,8 +249,11 @@ module Recipients = struct
           flush stderr)
       recipients_names
 
-  let list_recipients path expand_groups =
-    let string_path = show_path path in
+  type recipient_spec =
+    | Group of string
+    | Path of Named_path.t
+
+  let list_recipients recipient_spec expand_groups =
     let print_from_recipient_list recipients =
       List.iter
         (fun (r : Age.recipient) ->
@@ -255,45 +263,41 @@ module Recipients = struct
           print_endline r.name)
         recipients
     in
-    match Age.is_group_recipient string_path with
-    | true ->
-      Storage.Secrets.recipients_of_group_name_exn ~map_fn:Storage.Secrets.recipient_of_name string_path
-      |> print_from_recipient_list
-    | false ->
-    match Storage.Secrets.secret_exists_at path || Storage.Secrets.get_secrets_tree path <> [] with
-    | false -> die "E: no such secret %s" (show_path path)
-    | true ->
-    match expand_groups with
-    | true ->
-      (match Storage.Secrets.get_recipients_from_path_exn path with
-      | exception exn -> Util.Secret.die_failed_get_recipients ~exn ""
+    match recipient_spec with
+    | Group group -> Storage.Secrets.recipients_of_group_name_exn group |> print_from_recipient_list
+    | Path named_path ->
+      let path = named_path.path in
+      check_path_with_recipients named_path;
+      (match expand_groups with
+      | true ->
+        (match Storage.Secrets.get_recipients_from_path_exn path with
+        | exception exn -> Util.Secret.die_failed_get_recipients ~exn ""
+        | [] -> Util.Secret.die_no_recipients_found path
+        | recipients -> print_from_recipient_list recipients)
+      | false ->
+      match Storage.Secrets.get_recipients_names path with
       | [] -> Util.Secret.die_no_recipients_found path
-      | recipients -> print_from_recipient_list recipients)
-    | false ->
-    match Storage.Secrets.get_recipients_names path with
-    | [] -> Util.Secret.die_no_recipients_found path
-    | recipients_names ->
-      List.iter
-        (fun recipient_name ->
-          let recipient_keys =
-            match Age.is_group_recipient recipient_name with
-            | false -> Storage.Keys.keys_of_recipient recipient_name
-            | true ->
-            try
-              (* we don't need the group recipients, just to know that there are some *)
-              let (_ : Age.recipient list) =
-                Storage.Secrets.recipients_of_group_name_exn ~map_fn:Storage.Secrets.recipient_of_name recipient_name
-              in
-              [ Age.Key.inject "" ]
-            with exn ->
-              printfn "E: couldn't retrieve recipients for group %s. Reason: %s" recipient_name (Printexc.to_string exn);
-              []
-          in
-          (match recipient_keys with
-          | [] -> eprintfn "W: no keys found for %s" recipient_name
-          | _ -> ());
-          print_endline recipient_name)
-        recipients_names
+      | recipients_names ->
+        List.iter
+          (fun recipient_name ->
+            let recipient_keys =
+              match Age.is_group_recipient recipient_name with
+              | false -> Storage.Keys.keys_of_recipient recipient_name
+              | true ->
+              try
+                (* we don't need the group recipients, just to know that there are some *)
+                let (_ : Age.recipient list) = Storage.Secrets.recipients_of_group_name_exn recipient_name in
+                [ Age.Key.inject "" ]
+              with exn ->
+                printfn "E: couldn't retrieve recipients for group %s. Reason: %s" recipient_name
+                  (Printexc.to_string exn);
+                []
+            in
+            (match recipient_keys with
+            | [] -> eprintfn "W: no keys found for %s" recipient_name
+            | _ -> ());
+            print_endline recipient_name)
+          recipients_names)
 
   let find_overlap ?use_sudo ~limit () =
     let own_recipients = Storage.Secrets.recipients_of_own_id ?use_sudo () in
@@ -516,7 +520,7 @@ If the secret is a staging secret, its only recipient should be @everyone.
         let secret_recipients =
           if secret_recipients' = [] && self_fallback then (
             let own_recipients = Storage.Secrets.recipients_of_own_id ?use_sudo:None () in
-            let () = Recipients.add_recipients_if_none_exists own_recipients secret_path in
+            let () = Recipients.add_recipients_if_none_exists own_recipients (Named_path.of_path secret_path) in
             Storage.Secrets.get_recipients_from_path_exn secret_path)
           else secret_recipients'
         in

@@ -28,7 +28,7 @@ Should succeed - passing specific secret with .keys file in dir
 
 Should fail with non_existent path
   $ passage who non_existent_path
-  E: no such secret non_existent_path
+  E: no such secret: non_existent_path
   [1]
 
 Should succeed - valid secret path that ends with ..

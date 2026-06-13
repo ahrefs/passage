@@ -18,12 +18,21 @@ module List_ : sig
 end
 
 module Recipients : sig
-  val add_recipients_if_none_exists : Age.recipient list -> Path.t -> unit
-  val rewrite_recipients_file : ?use_sudo:bool -> Storage.Secret_name.t -> string list -> unit
-  val add_recipients_to_secret : ?use_sudo:bool -> Storage.Secret_name.t -> string list -> unit
-  val remove_recipients_from_secret : ?use_sudo:bool -> Storage.Secret_name.t -> string list -> unit
+  (** Check if [named_path] has an editable list of recipients, or die. *)
+  val check_path_with_recipients : Named_path.t -> unit
+
+  val add_recipients_if_none_exists : Age.recipient list -> Named_path.t -> unit
+  val rewrite_recipients_file : ?use_sudo:bool -> Named_path.t -> string list -> unit
+  val add_recipients_to_secret : ?use_sudo:bool -> Named_path.t -> string list -> unit
+  val remove_recipients_from_secret : ?use_sudo:bool -> Named_path.t -> string list -> unit
   val list_recipient_secrets : ?use_sudo:bool -> ?verbose:bool -> string list -> unit
-  val list_recipients : Path.t -> bool -> unit
+
+  (** A recipient_spec is either a group or a path. *)
+  type recipient_spec =
+    | Group of string
+    | Path of Named_path.t
+
+  val list_recipients : recipient_spec -> bool -> unit
   val find_overlap : ?use_sudo:bool -> limit:int -> unit -> (string * int) list * int
 end
 

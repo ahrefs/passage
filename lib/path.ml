@@ -16,6 +16,8 @@ let dirname p = Filename.dirname (project p) |> inject
 
 let concat p1 p2 = inject (Filename.concat (project p1) (project p2))
 
+let root = inject "."
+
 let is_dot p = project p = "."
 
 let ensure_parent p =
@@ -32,7 +34,7 @@ let build_rel_path rel_path =
   in
   (* normalized "/." is "/" so that removing the prefix results in no path, so don't append in that case: *)
   match normalized with
-  | None -> inject "."
+  | None -> root
   | Some p -> inject @@ Fpath.to_string p
 
 let abs path = concat (inject (Lazy.force !Config.secrets_dir)) (build_rel_path (project path))
