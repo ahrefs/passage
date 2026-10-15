@@ -30,7 +30,7 @@ top:
 
 .PHONY: init-dev
 init-dev:
-	opam switch create . --deps-only --with-test --with-doc --with-dev-setup --yes
+	opam switch create . --deps-only --with-test --with-doc --with-dev-setup --yes 4.14
 
 init:
 	opam switch create . --deps-only --yes
