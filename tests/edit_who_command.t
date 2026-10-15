@@ -24,6 +24,10 @@ Should succeed - edit recipients when the user is a recipient of the folder. Ref
   $ PASSAGE_IDENTITY=robby.rob.key passage get 02/secret1
   (02/secret1) secret: single line
 
+Should succeed - edit recipients when the user is a recipient of the folder.
+  $ EDITOR=$KEEP_RECIPIENTS passage edit-who 02/
+  I: no changes made to the recipients
+
 Should succeed - don't refresh secrets if recipients are not changed
   $ initial_hash=$(md5sum "$PASSAGE_DIR/secrets/02/secret1.age" | awk '{ print $1 }')
   $ passage who 02/secret1
