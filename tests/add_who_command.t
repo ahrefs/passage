@@ -86,7 +86,7 @@ Should fail - add recipients when user is not a recipient
   host/a
   poppy.pop
   $ PASSAGE_IDENTITY=bobby.bob.key passage add-who 03/secret1 poppy.pop
-  E: user is not a recipient of 03. Please ask one of the following to add you as a recipient:
+  E: user is not a recipient of '03'. Please ask one of the following to add you as a recipient:
     host/a
     poppy.pop
     robby.rob

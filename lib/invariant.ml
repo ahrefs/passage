@@ -7,7 +7,7 @@ let get_expanded_recipient_names_from_folder path =
 let error_not_recipient ~op_string path =
   let base_folder = Path.folder_of_path path in
   let () =
-    Util.eprintfn "E: user is not a recipient of %s. Please ask one of the following to add you as a recipient:"
+    Util.eprintfn "E: user is not a recipient of '%s'. Please ask one of the following to add you as a recipient:"
       (Util.Show.show_path base_folder)
   in
   let expanded_recipients = get_expanded_recipient_names_from_folder base_folder in

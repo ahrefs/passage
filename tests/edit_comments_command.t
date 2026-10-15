@@ -91,7 +91,7 @@ Should fail - edit comments when user is not a recipient
   $ UNAUTHORISED_USER="unauthorised"
   $ setup_identity $UNAUTHORISED_USER
   $ echo "unauthorised comment" | PASSAGE_IDENTITY=$UNAUTHORISED_USER.key passage edit-comments 00/secret1
-  E: user is not a recipient of 00. Please ask one of the following to add you as a recipient:
+  E: user is not a recipient of '00'. Please ask one of the following to add you as a recipient:
     bobby.bob
     dobby.dob
     robby.rob
