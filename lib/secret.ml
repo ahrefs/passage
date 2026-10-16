@@ -31,21 +31,22 @@ let format_explainer =
 
 # Secrets and comments formats:
 #
-# Single line secret with commments format:
+# Single-line secret with comments format:
 #     secret one line
 #     <empty line>
 #     comments until end of file
 #
-# Single line secret without commments format:
+# Single-line secret without comments format:
 #     secret one line
 #
-# Multiline secret with comments format:
+# Multi-line secret with comments format:
 #     <empty line>
 #     possibly several lines of comments
+#     without empty lines
 #     <empty line>
 #     secret until end of file
 #
-# Multiline secret without comments format:
+# Multi-line secret without comments format:
 #     <empty line>
 #     <empty line>
 #     secret until end of file
