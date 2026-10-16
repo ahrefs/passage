@@ -110,28 +110,6 @@ module Validation = struct
 
   let validate = validate_aux ~allow_legacy:false
 
-  let parse_exn_old plaintext_content =
-    if String.trim plaintext_content = "" then failwith "empty secrets are not allowed";
-    let lines = String.split_on_char '\n' plaintext_content in
-    let to_comments_format comments =
-      match comments with
-      | [] -> None
-      | _ -> Some (comments |> String.concat "\n" |> String.trim)
-    in
-    match lines with
-    | "" :: tl ->
-      (* multi-line secret *)
-      let (comments_lines, text) = split ((<>) "") tl in
-      let text = text |> String.concat "\n" |> String.trim in
-      if text = "" then failwith "broken format multi-line secret (empty secret text). Please fix secret."
-      else { kind = Multiline; text; comments = to_comments_format (comments_lines) }
-      (* We keep the second pattern to match legacy secrets,
-         which didn't have an empty line to separate from comments *)
-    | (text :: "" :: comments_lines | text :: comments_lines) when String.trim text <> "" ->
-      (* single line secret *)
-      { kind = Singleline; text; comments = to_comments_format comments_lines }
-    | _ -> failwith "empty secrets are not allowed"
-
   let parse_exn plaintext_content =
     match validate_aux ~allow_legacy:true plaintext_content with
     | Ok secret -> secret

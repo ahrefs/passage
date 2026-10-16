@@ -17,7 +17,6 @@ module Validation : sig
 
   val validate : string -> (t, string * validation_error) result
   val parse_exn : string -> t
-  val parse_exn_old : string -> t
 end
 
 val kind_to_string : kind -> string
