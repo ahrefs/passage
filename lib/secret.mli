@@ -15,7 +15,7 @@ module Validation : sig
     | EmptySecret
     | InvalidFormat
 
-  val validate : string -> (kind, string * validation_error) result
+  val validate : string -> (t, string * validation_error) result
   val parse_exn : string -> t
 end
 
