@@ -59,6 +59,22 @@ What should be the name used for your recipient identity?|}
 end
 
 module Get = struct
+  let just_get secret_name =
+    let secret_exists =
+      try Storage.Secrets.secret_exists secret_name with exn -> die ~exn "E: %s" (show_name secret_name)
+    in
+    (match secret_exists with
+    | false ->
+      if Path.is_directory Storage.Secrets.(to_path secret_name |> Path.abs) then
+        die "E: %s is a directory" (show_name secret_name)
+      else die "E: no such secret: %s" (show_name secret_name)
+    | true -> ());
+    let plaintext =
+      try Storage.Secrets.decrypt_exn secret_name
+      with exn -> die ~exn "E: failed to decrypt %s" (show_name secret_name)
+    in
+    try Secret.Validation.parse_exn plaintext with exn -> die ~exn "E: failed to parse %s" (show_name secret_name)
+
   let get_secret ?use_sudo ?expected_kind ?line_number ?(with_comments = false) ?(trim_new_line = false) secret_name =
     let secret_exists =
       try Storage.Secrets.secret_exists secret_name with exn -> die ~exn "E: %s" (show_name secret_name)

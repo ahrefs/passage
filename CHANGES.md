@@ -6,6 +6,7 @@
 - Fix clobbering of special files in `Storage.save_as` ([#28](https://github.com/ahrefs/passage/pull/28))
 - Can `edit-who` directories ([#33](https://github.com/ahrefs/passage/pull/33))
 - Bug fix: empty single line secrets used to be allowed -- this is no longer the case ([#34](https://github.com/ahrefs/passage/pull/34))
+- Add `get-comment` command ([#35](https://github.com/ahrefs/passage/pull/35))
 
 ## 0.3.5 (2026-04-02)
 
