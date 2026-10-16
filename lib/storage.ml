@@ -93,8 +93,8 @@ module Secrets = struct
 
   let agefile_of_name name = Path.inject (FilePath.add_extension (Secret_name.project name) ext)
 
-  let name_of_file file =
-    let fname = Path.project file in
+  let name_of_file path =
+    let fname = Path.project path in
     let prefix = get_secrets_dir () ^ Filename.dir_sep in
     let prefix_len = String.length prefix in
     String.sub fname prefix_len (String.length fname - prefix_len) |> FilePath.chop_extension |> Secret_name.inject

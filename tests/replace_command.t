@@ -29,7 +29,7 @@ Newly created secrets should have permissions 0o644
 
 Should fail - replace a secret that does not yet exist in a folder where we are NOT listed on the .keys (invariant)
   $ echo "new secret" | passage replace 01/00/new_secret_singleline
-  E: user is not a recipient of 01/00. Please ask one of the following to add you as a recipient:
+  E: user is not a recipient of '01/00'. Please ask one of the following to add you as a recipient:
     poppy.pop
     robby.rob
   E: refusing to replace secret: violates invariant
@@ -42,7 +42,7 @@ Should fail - replace a secret that does not yet exist in a folder where we are 
   > new secret line 2
   > new secret line 3\123\65
   > EOF
-  E: user is not a recipient of 01/00. Please ask one of the following to add you as a recipient:
+  E: user is not a recipient of '01/00'. Please ask one of the following to add you as a recipient:
     poppy.pop
     robby.rob
   E: refusing to replace secret: violates invariant
@@ -70,7 +70,7 @@ Should succeed - replacing an existing secret in a folder where we are listed on
 
 Should fail - replacing an existing secret in a folder where we are NOT listed on the .keys (invariant)
   $ echo "replaced secret" | passage replace 01/00/secret1
-  E: user is not a recipient of 01/00. Please ask one of the following to add you as a recipient:
+  E: user is not a recipient of '01/00'. Please ask one of the following to add you as a recipient:
     poppy.pop
     robby.rob
   E: refusing to replace secret: violates invariant
@@ -85,7 +85,7 @@ Should fail - replacing an existing secret in a folder where we are NOT listed o
   > replaced secret line 2
   > replaced secret line 3\123\65
   > EOF
-  E: user is not a recipient of 01/00. Please ask one of the following to add you as a recipient:
+  E: user is not a recipient of '01/00'. Please ask one of the following to add you as a recipient:
     poppy.pop
     robby.rob
   E: refusing to replace secret: violates invariant
@@ -174,7 +174,7 @@ Should fail - trying to replace a secret which one is not authorised to. (invari
   > unauthorised replace 1
   > unauthorised replace 2
   > EOF
-  E: user is not a recipient of 00. Please ask one of the following to add you as a recipient:
+  E: user is not a recipient of '00'. Please ask one of the following to add you as a recipient:
     bobby.bob
     dobby.dob
     robby.rob
@@ -194,7 +194,7 @@ Should fail - trying to replace a secret which one is not authorised to. (invari
 
 Should fail - replacing a secret which doesn't exist in a folder one is not authorised to.
   $ echo "new new new" | PASSAGE_IDENTITY=$UNAUTHORISED_USER.key passage replace 02/all_new_secret_singleline
-  E: user is not a recipient of 02. Please ask one of the following to add you as a recipient:
+  E: user is not a recipient of '02'. Please ask one of the following to add you as a recipient:
     bobby.bob
   E: refusing to replace secret: violates invariant
   [1]
@@ -202,7 +202,7 @@ Should fail - replacing a secret which doesn't exist in a folder one is not auth
   > unauthorised replace 1
   > unauthorised replace 2
   > EOF
-  E: user is not a recipient of 02. Please ask one of the following to add you as a recipient:
+  E: user is not a recipient of '02'. Please ask one of the following to add you as a recipient:
     bobby.bob
   E: refusing to replace secret: violates invariant
   [1]

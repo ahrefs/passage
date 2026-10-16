@@ -175,13 +175,14 @@ module Edit_cmd = struct
 end
 
 module Edit_who = struct
-  let edit_who_with_check secret_name =
-    let secret_path = Storage.Secrets.(to_path secret_name) in
+  let edit_who_with_check (secret_path : Path.t) =
     match Path.is_directory (Path.abs secret_path), Storage.Secrets.secret_exists_at secret_path with
-    | false, false -> Shell.die "E: no such secret: %s" (show_name secret_name)
+    | false, false -> Shell.die "E: no such secret: %s" (Path.project secret_path)
     | _ ->
-      let path = Storage.Secrets.(to_path secret_name) in
-      (try Invariant.run_if_recipient ~op_string:"edit recipients" ~path ~f:(fun () -> edit_recipients secret_name)
+      let secret_name = Storage.Secret_name.inject (Path.project secret_path) in
+      (try
+         Invariant.run_if_recipient ~op_string:"edit recipients" ~path:secret_path ~f:(fun () ->
+           edit_recipients secret_name)
        with Failure s -> Shell.die "%s" s)
 
   let edit_who =
@@ -190,7 +191,7 @@ module Edit_who = struct
       \  in the tree, so all recipients need to be specified at the level of the immediately containing folder."
     in
     let info = Cmd.info "edit-who" ~doc in
-    let term = Term.(const edit_who_with_check $ Flags.secret_name) in
+    let term = Term.(const edit_who_with_check $ Flags.secrets_path) in
     Cmd.v info term
 end
 
