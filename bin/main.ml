@@ -442,10 +442,10 @@ Checking for validity of own secrets. Use -v flag to break down per secret
                   try
                     let secret_text = Secrets.decrypt_exn ~silence_stderr:true secret_name in
                     match Secret.Validation.validate secret_text with
-                    | Ok kind ->
+                    | Ok secret ->
                       let () =
                         Util.verbose_eprintlf ~verbose "✅ %s [ valid %s ]" (show_name secret_name)
-                          (Secret.kind_to_string kind)
+                          (Secret.kind_to_string secret.kind)
                       in
                       succ ok, invalid, fail
                     | Error (e, validation_error_type) ->

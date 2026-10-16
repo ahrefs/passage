@@ -59,7 +59,18 @@ module Validation = struct
     | EmptySecret
     | InvalidFormat
 
-  let validate plaintext =
+  let split p l =
+    let rec aux acc p =
+      function
+        | [] -> (List.rev acc, [])
+        | x :: xs ->
+          if p x
+          then aux (x :: acc) p xs
+          else (List.rev acc, xs)
+    in
+    aux [] p l
+
+  let validate_aux ?(allow_legacy = false) plaintext : (t, string * validation_error) result =
     if String.trim plaintext = "" then Error ("empty secrets are not allowed", EmptySecret)
     else (
       (* We can only use String.trim on the individual lines as we'd be stripping
@@ -67,24 +78,20 @@ module Validation = struct
 
          We need to use String.trim below on each line read to make sure that we don't have
          spaces or other whitespace characters in lines that might lead to false negatives *)
-      let lines = String.split_on_char '\n' plaintext in
-      match lines with
+      match Base.lines plaintext with
       (* multi-line with comments *)
       | "" :: comment :: rest when String.trim comment <> "" ->
         (* find the empty line that introduces the secret and make sure that it has content *)
-        let secret, _is_secret =
-          List.fold_left
-            (fun (secret, is_secret) line ->
-              match is_secret, String.trim line with
-              | true, s when s <> "" -> line :: secret, true
-              | true, _ -> secret, true
-              | false, "" -> secret, true
-              | false, _ -> secret, false)
-            ([], false) rest
+        let comment_lines, secret_lines =
+          split ((<>) "") (comment :: rest)
         in
-        if secret = [] then Error ("multiline: empty secret", MultilineEmptySecret) else Ok Multiline
+        let text = Base.unlines secret_lines |> String.trim in
+        let comments = Some (Base.unlines comment_lines) in
+        if text = "" then Error ("multiline: empty secret", MultilineEmptySecret)
+        else (Ok {kind = Multiline; text; comments})
       (* multi-line without comments *)
-      | "" :: "" :: secret :: _ when String.trim secret <> "" -> Ok Multiline
+      | "" :: "" :: secret :: rest when String.trim secret <> "" ->
+        (Ok { kind = Multiline; text = Base.unlines (secret :: rest); comments = None})
       (* single-line with comments *)
       | secret :: "" :: comments when String.trim secret <> "" ->
         let has_empty_lines_in_cmts =
@@ -95,41 +102,22 @@ module Validation = struct
         in
         (match has_empty_lines_in_cmts with
         | true -> Error ("empty lines are not allowed in comments", InvalidFormat)
-        | false -> Ok Singleline)
+        | false -> (Ok { kind = Singleline; text = secret; comments = Some (Base.unlines comments)}))
       (* We don't want to allow the creation of new secrets in legacy single-line format *)
-      | secret :: comment :: _ when String.trim secret <> "" && String.trim comment <> "" ->
+      | secret :: (comment :: _ as comments) when String.trim secret <> "" && String.trim comment <> "" ->
+        if allow_legacy then
+          Ok { kind = Singleline; text = secret; comments = Some (Base.unlines comments)}
+        else
         Error
           ( "single-line secrets with comments should have an empty line between the secret and the comments.",
             SingleLineLegacy )
       (* single-line without comments *)
-      | [ secret ] when String.trim secret <> "" -> Ok Singleline
+      | [ secret ] when String.trim secret <> "" -> (Ok { kind = Singleline; text = secret; comments = None})
       | _ -> Error ("invalid format", InvalidFormat))
 
-  (** {v
- Multiline secret with comments format:
-     <empty line>
-     possibly several lines of comments without empty lines
-     <empty line>
-     secret until end of file
+  let validate = validate_aux ~allow_legacy:false
 
- Multiline secret without comments format:
-     <empty line>
-     <empty line>
-     secret until end of file
-
- Single line secret with commments format:
-     secret one line
-     <empty line>
-     comments until end of file
-
- Single line secret without commments format:
-     secret one line
-
- Single line secret with commments legacy format [DEPRECATED]:
-     secret one line
-     comments until the end of file
-      v} *)
-  let parse_exn plaintext_content =
+  let _parse_exn_old plaintext_content =
     if String.trim plaintext_content = "" then failwith "empty secrets are not allowed";
     let lines = String.split_on_char '\n' plaintext_content in
     let to_comments_format comments =
@@ -140,22 +128,19 @@ module Validation = struct
     match lines with
     | "" :: tl ->
       (* multi-line secret *)
-      let text, comments_lines, (_ : bool) =
-        List.fold_left
-          (fun (secret_text, comments, is_secret) line ->
-            match is_secret, line with
-            | true, _ -> line :: secret_text, comments, true
-            | false, "" -> secret_text, comments, true
-            | false, s -> secret_text, s :: comments, false)
-          ([], [], false) tl
-      in
-      let text = List.rev text |> String.concat "\n" |> String.trim in
+      let (comments_lines, text) = split ((<>) "") tl in
+      let text = text |> String.concat "\n" |> String.trim in
       if text = "" then failwith "broken format multi-line secret (empty secret text). Please fix secret."
-      else { kind = Multiline; text; comments = to_comments_format (List.rev comments_lines) }
+      else { kind = Multiline; text; comments = to_comments_format (comments_lines) }
       (* We keep the second pattern to match legacy secrets,
          which didn't have an empty line to separate from comments *)
     | (text :: "" :: comments_lines | text :: comments_lines) when String.trim text <> "" ->
       (* single line secret *)
       { kind = Singleline; text; comments = to_comments_format comments_lines }
     | _ -> failwith "empty secrets are not allowed"
+
+  let parse_exn plaintext_content =
+    match validate_aux ~allow_legacy:true plaintext_content with
+    | Ok secret -> secret
+    | Error (e, _typ) -> failwith e
 end

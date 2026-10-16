@@ -34,13 +34,13 @@ secret|};
 let%expect_test "broken format multi-line" =
   parse {|
 comment1|};
-  [%expect {|Error: Failure("broken format multi-line secret (empty secret text). Please fix secret.")|}];
+  [%expect {|Error: Failure("multiline: empty secret")|}];
   parse {|
 comment1
 comment2
 
 |};
-  [%expect {| Error: Failure("broken format multi-line secret (empty secret text). Please fix secret.") |}]
+  [%expect {| Error: Failure("multiline: empty secret") |}]
 
 let%expect_test "single-line without comments" =
   parse {|secret secret|};
@@ -110,4 +110,4 @@ let%expect_test "empty single-line secret" =
   parse "\t\n\n";
   [%expect {|Error: Failure("empty secrets are not allowed")|}];
   parse " \n\ncomment1\ncomment2";
-  [%expect {|Error: Failure("empty secrets are not allowed")|}]
+  [%expect {|Error: Failure("invalid format")|}]
