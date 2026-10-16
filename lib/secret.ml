@@ -30,8 +30,6 @@ let format_explainer =
   {|
 
 # Secrets and comments formats:
-# (multi-line comments _should not_ have empty lines in them)
-# (multi-line secrets are trimmed so '\na\nb\n' becomes 'a\nb')
 #
 # Single line secret with commments format:
 #     secret one line
@@ -51,6 +49,10 @@ let format_explainer =
 #     <empty line>
 #     <empty line>
 #     secret until end of file
+#
+# (single-line secrets are never newline-terminated)
+# (multi-line secrets/comments are trimmed so '\na\nb\n' becomes 'a\nb')
+# (an <empty line> is exactly '\n')
 |}
 
 module Validation = struct
