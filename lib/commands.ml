@@ -253,7 +253,7 @@ module Recipients = struct
             | true ->
             try
               let plaintext = Util.Secret.decrypt_silently ?use_sudo secret in
-              let name = (show_name secret) in
+              let name = show_name secret in
               match Secret.Validation.validate plaintext with
               | Ok secret -> printfn "✅ %s [ valid %s ]" name (Secret.kind_to_string secret.kind)
               | Error (e, _typ) -> printfn "❌ %s Invalid format: %s" name e

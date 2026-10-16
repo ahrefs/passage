@@ -27,5 +27,4 @@ let parse_exn_comment_is_trimmed =
     | _ -> true
     | exception Failure _ -> true)
 
-let () =
-  QCheck_base_runner.run_tests_main [ parse_exn_text_is_nonempty; parse_exn_comment_is_trimmed ]
+let () = QCheck_base_runner.run_tests_main [ parse_exn_text_is_nonempty; parse_exn_comment_is_trimmed ]
