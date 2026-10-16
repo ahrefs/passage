@@ -61,3 +61,15 @@ comment|};
 let%expect_test "single-line without comments" =
   test_validate {|secret|};
   [%expect {| OK: single-line |}]
+
+let%expect_test "empty single-line secret" =
+  test_validate "";
+  [%expect {|Error: empty secrets are not allowed|}];
+  test_validate "\t";
+  [%expect {|Error: empty secrets are not allowed|}];
+  test_validate "\t\n";
+  [%expect {|Error: empty secrets are not allowed|}];
+  test_validate "\t\n\n";
+  [%expect {|Error: empty secrets are not allowed|}];
+  test_validate " \n\ncomment1\ncomment2";
+  [%expect {|Error: invalid format|}]

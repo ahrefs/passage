@@ -94,3 +94,15 @@ comment2|};
          Comments:
          comment1
          comment2|}]
+
+let%expect_test "empty single-line secret" =
+  parse "";
+  [%expect {|Error: Failure("empty secrets are not allowed")|}];
+  parse "\t";
+  [%expect {|Error: Failure("empty secrets are not allowed")|}];
+  parse "\t\n";
+  [%expect {|Error: Failure("empty secrets are not allowed")|}];
+  parse "\t\n\n";
+  [%expect {|Error: Failure("empty secrets are not allowed")|}];
+  parse " \n\ncomment1\ncomment2";
+  [%expect {|Error: Failure("empty secrets are not allowed")|}]
