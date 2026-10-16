@@ -92,15 +92,7 @@ module Validation = struct
         else (Error ("multiline: empty secret", MultilineEmptySecret))
       (* single-line with comments *)
       | secret :: "" :: comments when String.trim secret <> "" ->
-        let has_empty_lines_in_cmts =
-          match comments with
-          | [] -> false
-          | cmts ->
-            String.concat "\n" cmts |> String.trim |> String.split_on_char '\n' |> List.map String.trim |> List.mem ""
-        in
-        (match has_empty_lines_in_cmts with
-        | true -> Error ("empty lines are not allowed in comments", InvalidFormat)
-        | false -> (Ok { kind = Singleline; text = secret; comments = parse_comments comments}))
+        (Ok { kind = Singleline; text = secret; comments = parse_comments comments})
       (* We don't want to allow the creation of new secrets in legacy single-line format *)
       | secret :: (_ :: _ as comments) when String.trim secret <> "" ->
         if allow_legacy then
