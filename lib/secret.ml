@@ -31,6 +31,7 @@ let format_explainer =
 
 # Secrets and comments formats:
 # (multi-line comments _should not_ have empty lines in them)
+# (multi-line secrets are trimmed so '\na\nb\n' becomes 'a\nb')
 #
 # Single line secret with commments format:
 #     secret one line
@@ -71,27 +72,24 @@ module Validation = struct
     aux [] p l
 
   let validate_aux ?(allow_legacy = false) plaintext : (t, string * validation_error) result =
+    let parse_comments comment_lines =
+      match comment_lines with [] -> None | _ -> Some (Base.unlines comment_lines |> String.trim)
+    in
+    let parse_text secret_lines = Base.unlines secret_lines |> String.trim in
     if String.trim plaintext = "" then Error ("empty secrets are not allowed", EmptySecret)
-    else (
-      (* We can only use String.trim on the individual lines as we'd be stripping
-         out leading empty lines, thus missing multi-line secrets due to the format spec.
-
-         We need to use String.trim below on each line read to make sure that we don't have
-         spaces or other whitespace characters in lines that might lead to false negatives *)
-      match Base.lines plaintext with
+    else match Base.lines plaintext with
       (* multi-line with comments *)
-      | "" :: comment :: rest when String.trim comment <> "" ->
+      | "" :: comment :: rest when comment <> "" ->
         (* find the empty line that introduces the secret and make sure that it has content *)
-        let comment_lines, secret_lines =
-          split ((<>) "") (comment :: rest)
-        in
-        let text = Base.unlines secret_lines |> String.trim in
-        let comments = Some (Base.unlines comment_lines) in
+        let comment_lines, secret_lines = split ((<>) "") (comment :: rest) in
+        let text = parse_text secret_lines in
         if text = "" then Error ("multiline: empty secret", MultilineEmptySecret)
-        else (Ok {kind = Multiline; text; comments})
+        else Ok {kind = Multiline; text; comments = parse_comments comment_lines}
       (* multi-line without comments *)
-      | "" :: "" :: secret :: rest when String.trim secret <> "" ->
-        (Ok { kind = Multiline; text = Base.unlines (secret :: rest); comments = None})
+      | "" :: "" :: secret :: rest ->
+        let text = parse_text (secret :: rest) in
+        if text <> "" then (Ok { kind = Multiline; text; comments = None})
+        else (Error ("multiline: empty secret", MultilineEmptySecret))
       (* single-line with comments *)
       | secret :: "" :: comments when String.trim secret <> "" ->
         let has_empty_lines_in_cmts =
@@ -102,22 +100,22 @@ module Validation = struct
         in
         (match has_empty_lines_in_cmts with
         | true -> Error ("empty lines are not allowed in comments", InvalidFormat)
-        | false -> (Ok { kind = Singleline; text = secret; comments = Some (Base.unlines comments)}))
+        | false -> (Ok { kind = Singleline; text = secret; comments = parse_comments comments}))
       (* We don't want to allow the creation of new secrets in legacy single-line format *)
-      | secret :: (comment :: _ as comments) when String.trim secret <> "" && String.trim comment <> "" ->
+      | secret :: (_ :: _ as comments) when String.trim secret <> "" ->
         if allow_legacy then
-          Ok { kind = Singleline; text = secret; comments = Some (Base.unlines comments)}
+          Ok { kind = Singleline; text = secret; comments = parse_comments comments}
         else
         Error
           ( "single-line secrets with comments should have an empty line between the secret and the comments.",
             SingleLineLegacy )
       (* single-line without comments *)
       | [ secret ] when String.trim secret <> "" -> (Ok { kind = Singleline; text = secret; comments = None})
-      | _ -> Error ("invalid format", InvalidFormat))
+      | _ -> Error ("invalid format", InvalidFormat)
 
   let validate = validate_aux ~allow_legacy:false
 
-  let _parse_exn_old plaintext_content =
+  let parse_exn_old plaintext_content =
     if String.trim plaintext_content = "" then failwith "empty secrets are not allowed";
     let lines = String.split_on_char '\n' plaintext_content in
     let to_comments_format comments =
