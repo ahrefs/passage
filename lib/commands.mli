@@ -3,6 +3,8 @@ module Init : sig
 end
 
 module Get : sig
+  val just_get : Storage.Secret_name.t -> Secret.t
+
   val get_secret :
     ?use_sudo:bool ->
     ?expected_kind:Secret.kind ->

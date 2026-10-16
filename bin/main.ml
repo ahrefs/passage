@@ -328,6 +328,20 @@ module Get = struct
     let doc = "get the whole contents of the specified secret, including comments" in
     let info = Cmd.info "cat" ~doc in
     Cmd.v info term
+
+  let get_comment =
+    let term =
+      let get_comment secret_name =
+        match Commands.Get.just_get secret_name with
+        | { comments = Some s; _ } -> Printf.printf "%s\n" s
+        | exception Failure s -> Shell.die "%s" s
+        | _ -> ()
+      in
+      Term.(const get_comment $ Flags.secret_name)
+    in
+    let doc = "get the comment of the specified secret" in
+    let info = Cmd.info "get-comment" ~doc in
+    Cmd.v info term
 end
 
 module Healthcheck = struct
@@ -881,6 +895,7 @@ let () =
       Rm_who.rm_who;
       Search.search;
       Get.secret;
+      Get.get_comment;
       Show.show;
       Subst.subst;
       Template_cmd.template;
