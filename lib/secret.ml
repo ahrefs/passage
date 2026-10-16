@@ -158,9 +158,4 @@ module Validation = struct
       (* single line secret *)
       { kind = Singleline; text; comments = to_comments_format comments_lines }
     | _ -> failwith "empty secrets are not allowed"
-
-  let validity_to_string name secret_text =
-    match validate secret_text with
-    | Ok kind -> Printf.sprintf "✅ %s [ valid %s ]" name (kind_to_string kind)
-    | Error (e, _typ) -> Printf.sprintf "❌ %s Invalid format: %s" name e
 end
