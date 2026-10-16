@@ -7,6 +7,7 @@
 - Can `edit-who` directories ([#33](https://github.com/ahrefs/passage/pull/33))
 - Bug fix: empty single line secrets used to be allowed -- this is no longer the case ([#34](https://github.com/ahrefs/passage/pull/34))
 - Add `get-comment` command ([#35](https://github.com/ahrefs/passage/pull/35))
+- Bug fix: empty lines should be allowed in comments ([#36](https://github.com/ahrefs/passage/pull/34))
 
 ## 0.3.5 (2026-04-02)
 

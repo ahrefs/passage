@@ -442,10 +442,10 @@ Checking for validity of own secrets. Use -v flag to break down per secret
                   try
                     let secret_text = Secrets.decrypt_exn ~silence_stderr:true secret_name in
                     match Secret.Validation.validate secret_text with
-                    | Ok kind ->
+                    | Ok secret ->
                       let () =
                         Util.verbose_eprintlf ~verbose "✅ %s [ valid %s ]" (show_name secret_name)
-                          (Secret.kind_to_string kind)
+                          (Secret.kind_to_string secret.kind)
                       in
                       succ ok, invalid, fail
                     | Error (e, validation_error_type) ->
@@ -847,24 +847,24 @@ let () =
          when retrieving the secrets. Please check the $(i,examples) section below for an explanation of the formats. ";
       `P "Secrets that don't conform to these formats will be rejected.";
       `S Manpage.s_examples;
-      `P "$(b,Multiline secret with comments:)";
-      `Pre
-        {| <empty line>
- possibly several lines of comments
- without empty lines in the middle
- <empty line>
- secret until end of file|};
-      `P "$(b,Multiline secret without comments:)";
-      `Pre {| <empty line>
- <empty line>
- secret until end of file|};
-      `P "$(b,Single line secret without commments:)";
-      `Pre {| secret one line |};
-      `P "$(b,Single line secret with commments:)";
+      `P "$(b,Single-line secret with comments:)";
       `Pre {| secret one line
  <empty line>
  comments until end of file|};
-      `P "$(b,Single line secret without commments legacy [DEPRECATED]:)";
+      `P "$(b,Single-line secret without comments:)";
+      `Pre {| secret one line |};
+      `P "$(b,Multi-line secret with comments:)";
+      `Pre
+        {| <empty line>
+ possibly several lines of comments
+ without empty lines
+ <empty line>
+ secret until end of file|};
+      `P "$(b,Multi-line secret without comments:)";
+      `Pre {| <empty line>
+ <empty line>
+ secret until end of file|};
+      `P "$(b,Single-line secret without comments legacy [DEPRECATED]:)";
       `Pre {| secret one line
  comments until end of file|};
     ]
