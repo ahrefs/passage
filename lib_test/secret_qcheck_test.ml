@@ -48,7 +48,6 @@ let parse_exn_agrees =
         QCheck.Test.fail_reportf "results differ:\n  input: %S\n  old: %s\n  new: %s"
           s (show_result old_result) (show_result new_result)
     | Error _, Error _ -> true
-    | Ok _, Error {|empty lines are not allowed in comments|} -> true
     | Ok _, Error _ ->
       QCheck.Test.fail_reportf "old succeeded but new failed:\n  input: %S\n  old: %s\n  new: %s"
         s (show_result old_result) (show_result new_result)
