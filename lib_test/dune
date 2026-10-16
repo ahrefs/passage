@@ -1,6 +1,6 @@
 (library
  (name passage_test)
- (modules :standard \ template_qcheck_test)
+ (modules :standard \ template_qcheck_test secret_qcheck_test)
  (libraries
   base
   passage
@@ -16,4 +16,9 @@
 (test
  (name template_qcheck_test)
  (modules template_qcheck_test)
+ (libraries passage qcheck-core qcheck-core.runner))
+
+(test
+ (name secret_qcheck_test)
+ (modules secret_qcheck_test)
  (libraries passage qcheck-core qcheck-core.runner))
