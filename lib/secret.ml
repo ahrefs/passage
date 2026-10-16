@@ -154,10 +154,10 @@ module Validation = struct
       else { kind = Multiline; text; comments = to_comments_format (List.rev comments_lines) }
       (* We keep the second pattern to match legacy secrets,
          which didn't have an empty line to separate from comments *)
-    | text :: "" :: comments_lines | text :: comments_lines ->
+    | (text :: "" :: comments_lines | text :: comments_lines) when String.trim text <> "" ->
       (* single line secret *)
       { kind = Singleline; text; comments = to_comments_format comments_lines }
-    | [] -> failwith "empty secrets are not allowed"
+    | _ -> failwith "empty secrets are not allowed"
 
   let validity_to_string name secret_text =
     match validate secret_text with
