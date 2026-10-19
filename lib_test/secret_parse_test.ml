@@ -7,7 +7,7 @@ let pp_secret { Secret.kind; text; comments } =
     | Some c -> Printf.sprintf "Some %S" c)
 
 let parse s =
-  print_endline (try "Ok " ^ pp_secret (Secret.Validation.parse_exn s) with exn -> "Error: " ^ Printexc.to_string exn)
+  print_endline (try "Ok " ^ pp_secret (Secret.parse_exn s) with exn -> "Error: " ^ Printexc.to_string exn)
 
 let%expect_test "empty string or whitespace string" =
   parse {||};

@@ -476,7 +476,7 @@ open Passage
 (* Helper function for test setup *)
 let parse s =
   try
-    let { Secret.kind; text; comments } = Secret.Validation.parse_exn s in
+    let { Secret.kind; text; comments } = Secret.parse_exn s in
     print_endline @@ Printf.sprintf "Kind: %s\nText: %s"
       (string_of_kind kind) text
   with exn -> print_endline ("Error: " ^ Printexc.to_string exn)

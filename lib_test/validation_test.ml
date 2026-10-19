@@ -6,7 +6,7 @@ let string_of_kind = function
 
 let test_validate s =
   print_endline
-    (match Secret.Validation.validate s with
+    (match Secret.validate s with
     | Ok secret -> "OK: " ^ string_of_kind secret.kind
     | Error (e, _typ) -> "Error: " ^ e)
 

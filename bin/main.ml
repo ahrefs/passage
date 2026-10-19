@@ -441,7 +441,7 @@ Checking for validity of own secrets. Use -v flag to break down per secret
                 (fun (ok, invalid, fail) secret_name ->
                   try
                     let secret_text = Secrets.decrypt_exn ~silence_stderr:true secret_name in
-                    match Secret.Validation.validate secret_text with
+                    match Secret.validate secret_text with
                     | Ok secret ->
                       let () =
                         Util.verbose_eprintlf ~verbose "✅ %s [ valid %s ]" (show_name secret_name)
@@ -455,7 +455,7 @@ Checking for validity of own secrets. Use -v flag to break down per secret
                         match upgrade_mode, validation_error_type with
                         | Upgrade, SingleLineLegacy ->
                           (try
-                             let parsed_secret = Secret.Validation.parse_exn secret_text in
+                             let parsed_secret = Secret.parse_exn secret_text in
                              let upgraded_secret = reconstruct_secret ?comments:parsed_secret.comments parsed_secret in
                              let recipients = Util.Recipients.get_recipients_or_die secret_name in
                              Storage.Secrets.encrypt_exn ~verbose:false ~plaintext:upgraded_secret ~secret_name

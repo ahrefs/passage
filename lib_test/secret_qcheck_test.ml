@@ -16,13 +16,13 @@ let secret_string_arb = QCheck.make ~shrink:QCheck.Shrink.string ~print:String.e
 let parse_exn_text_is_nonempty =
   QCheck.Test.make ~long_factor ~name:"parse_exn result has non-empty trimmed text" ~count:1000 secret_string_arb
     (fun s ->
-    match Secret.Validation.parse_exn s with
+    match Secret.parse_exn s with
     | t -> String.trim t.text <> ""
     | exception Failure _ -> true)
 
 let parse_exn_comment_is_trimmed =
   QCheck.Test.make ~long_factor ~name:"parse_exn result has trimmed comments" ~count:1000 secret_string_arb (fun s ->
-    match Secret.Validation.parse_exn s with
+    match Secret.parse_exn s with
     | { comments = Some comments; _ } -> String.trim comments = comments
     | _ -> true
     | exception Failure _ -> true)

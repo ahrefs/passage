@@ -1,9 +1,8 @@
 (** Unified validation functions for secrets, comments, and recipients *)
 open Printf
 
-(** Validate secret format using Secret.Validation module *)
 let validate_secret secret =
-  match Secret.Validation.validate secret with
+  match Secret.validate secret with
   | Error (e, _typ) -> Error ("E: this secret is in an invalid format: " ^ e)
   | _ -> Ok secret
 

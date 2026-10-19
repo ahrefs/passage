@@ -56,60 +56,58 @@ let format_explainer =
 # (an <empty line> is exactly '\n')
 |}
 
-module Validation = struct
-  type validation_error =
-    | SingleLineLegacy
-    | MultilineEmptySecret
-    | EmptySecret
-    | InvalidFormat
+type validation_error =
+  | SingleLineLegacy
+  | MultilineEmptySecret
+  | EmptySecret
+  | InvalidFormat
 
-  let split p l =
-    let rec aux acc p = function
-      | [] -> List.rev acc, []
-      | x :: xs -> if p x then aux (x :: acc) p xs else List.rev acc, xs
-    in
-    aux [] p l
+let split pred l =
+  let rec aux acc = function
+    | [] -> List.rev acc, []
+    | x :: xs -> if pred x then aux (x :: acc) xs else List.rev acc, xs
+  in
+  aux [] l
 
-  let validate_aux ?(allow_legacy = false) plaintext : (t, string * validation_error) result =
-    let parse_comments comment_lines =
-      match comment_lines with
-      | [] -> None
-      | _ -> Some (Base.unlines comment_lines |> String.trim)
-    in
-    let parse_text secret_lines = Base.unlines secret_lines |> String.trim in
-    if String.trim plaintext = "" then Error ("empty secrets are not allowed", EmptySecret)
-    else (
-      match Base.lines plaintext with
-      (* multi-line with comments *)
-      | "" :: comment :: rest when comment <> "" ->
-        (* find the empty line that introduces the secret and make sure that it has content *)
-        let comment_lines, secret_lines = split (( <> ) "") (comment :: rest) in
-        let text = parse_text secret_lines in
-        if text = "" then Error ("multiline: empty secret", MultilineEmptySecret)
-        else Ok { kind = Multiline; text; comments = parse_comments comment_lines }
-      (* multi-line without comments *)
-      | "" :: "" :: secret :: rest ->
-        let text = parse_text (secret :: rest) in
-        if text <> "" then Ok { kind = Multiline; text; comments = None }
-        else Error ("multiline: empty secret", MultilineEmptySecret)
-      (* single-line with comments *)
-      | secret :: "" :: comments when String.trim secret <> "" ->
-        Ok { kind = Singleline; text = secret; comments = parse_comments comments }
-      (* We don't want to allow the creation of new secrets in legacy single-line format *)
-      | secret :: (_ :: _ as comments) when String.trim secret <> "" ->
-        if allow_legacy then Ok { kind = Singleline; text = secret; comments = parse_comments comments }
-        else
-          Error
-            ( "single-line secrets with comments should have an empty line between the secret and the comments.",
-              SingleLineLegacy )
-      (* single-line without comments *)
-      | [ secret ] when String.trim secret <> "" -> Ok { kind = Singleline; text = secret; comments = None }
-      | _ -> Error ("invalid format", InvalidFormat))
+let validate_aux ?(allow_legacy = false) plaintext : (t, string * validation_error) result =
+  let parse_comments comment_lines =
+    match comment_lines with
+    | [] -> None
+    | _ -> Some (Base.unlines comment_lines |> String.trim)
+  in
+  let parse_text secret_lines = Base.unlines secret_lines |> String.trim in
+  if String.trim plaintext = "" then Error ("empty secrets are not allowed", EmptySecret)
+  else (
+    match Base.lines plaintext with
+    (* multi-line with comments *)
+    | "" :: comment :: rest when comment <> "" ->
+      (* find the empty line that introduces the secret and make sure that it has content *)
+      let comment_lines, secret_lines = split (( <> ) "") (comment :: rest) in
+      let text = parse_text secret_lines in
+      if text = "" then Error ("multiline: empty secret", MultilineEmptySecret)
+      else Ok { kind = Multiline; text; comments = parse_comments comment_lines }
+    (* multi-line without comments *)
+    | "" :: "" :: secret :: rest ->
+      let text = parse_text (secret :: rest) in
+      if text <> "" then Ok { kind = Multiline; text; comments = None }
+      else Error ("multiline: empty secret", MultilineEmptySecret)
+    (* single-line with comments *)
+    | secret :: "" :: comments when String.trim secret <> "" ->
+      Ok { kind = Singleline; text = secret; comments = parse_comments comments }
+    (* We don't want to allow the creation of new secrets in legacy single-line format *)
+    | secret :: (_ :: _ as comments) when String.trim secret <> "" ->
+      if allow_legacy then Ok { kind = Singleline; text = secret; comments = parse_comments comments }
+      else
+        Error
+          ( "single-line secrets with comments should have an empty line between the secret and the comments.",
+            SingleLineLegacy )
+    (* single-line without comments *)
+    | [ secret ] when String.trim secret <> "" -> Ok { kind = Singleline; text = secret; comments = None }
+    | _ -> Error ("invalid format", InvalidFormat))
 
-  let validate = validate_aux ~allow_legacy:false
+let validate = validate_aux ~allow_legacy:false
 
-  let parse_exn plaintext_content =
-    match validate_aux ~allow_legacy:true plaintext_content with
-    | Ok secret -> secret
-    | Error (e, _typ) -> failwith e
-end
+let parse_exn plaintext_content =
+  match validate_aux ~allow_legacy:true plaintext_content with
+  | Ok secret -> secret
+  | Error (e, _typ) -> failwith e

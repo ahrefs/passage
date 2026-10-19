@@ -73,7 +73,7 @@ module Get = struct
       try Storage.Secrets.decrypt_exn secret_name
       with exn -> die ~exn "E: failed to decrypt %s" (show_name secret_name)
     in
-    try Secret.Validation.parse_exn plaintext with exn -> die ~exn "E: failed to parse %s" (show_name secret_name)
+    try Secret.parse_exn plaintext with exn -> die ~exn "E: failed to parse %s" (show_name secret_name)
 
   let get_secret ?use_sudo ?expected_kind ?line_number ?(with_comments = false) ?(trim_new_line = false) secret_name =
     let secret_exists =
@@ -103,8 +103,7 @@ module Get = struct
       | true, Some ln -> get_line_exn plaintext ln
       | false, _ ->
         let secret =
-          try Secret.Validation.parse_exn plaintext
-          with exn -> die ~exn "E: failed to parse %s" (show_name secret_name)
+          try Secret.parse_exn plaintext with exn -> die ~exn "E: failed to parse %s" (show_name secret_name)
         in
         let kind = secret.kind in
         (* we can have this validation only here because we don't have expected kinds when using the cat command
@@ -254,7 +253,7 @@ module Recipients = struct
             try
               let plaintext = Util.Secret.decrypt_silently ?use_sudo secret in
               let name = show_name secret in
-              match Secret.Validation.validate plaintext with
+              match Secret.validate plaintext with
               | Ok secret -> printfn "✅ %s [ valid %s ]" name (Secret.kind_to_string secret.kind)
               | Error (e, _typ) -> printfn "❌ %s Invalid format: %s" name e
             with _ -> printfn "🚨 %s [ WARNING: failed to decrypt ]" (show_name secret)
@@ -401,7 +400,7 @@ module Template = struct
     let secret_name = Storage.Secret_name.inject name in
     try
       let plaintext = Util.Secret.decrypt_silently secret_name in
-      let secret = Secret.Validation.parse_exn plaintext in
+      let secret = Secret.parse_exn plaintext in
       Ok secret.text
     with
     | Failure s -> Error (Printf.sprintf "unable to decrypt secret: %s" s)
@@ -565,7 +564,7 @@ module Create = struct
   let add ?use_sudo ~comments secret_name secret_text =
     base_check ?use_sudo secret_name;
     Edit.edit_secret ?use_sudo secret_name ~self_fallback:true ~get_updated_secret:(fun _ ->
-      let parsed_secret = Secret.Validation.parse_exn secret_text in
+      let parsed_secret = Secret.parse_exn secret_text in
       let comments =
         match comments, parsed_secret.comments with
         | Some comment, None | None, Some comment -> Some comment
@@ -611,7 +610,7 @@ module Replace = struct
             let original_secret =
               try
                 let secret_plaintext = Storage.Secrets.decrypt_exn ~silence_stderr:true secret_name in
-                Secret.Validation.parse_exn secret_plaintext
+                Secret.parse_exn secret_plaintext
               with _e ->
                 die
                   "E: unable to parse secret %s's format. If we proceed, the comments will be lost. Aborting. Please \
