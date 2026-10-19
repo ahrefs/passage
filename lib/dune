@@ -1,6 +1,4 @@
 (library
  (name passage)
  (public_name passage)
- (libraries bos fileutils fpath re unix)
- (instrumentation
-  (backend bisect_ppx)))
+ (libraries bos fileutils fpath re unix))
