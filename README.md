@@ -31,7 +31,19 @@ make fmt
 
 ## Secret format
 
-Multi-line secrets with comments:
+Single-line secret with comments:
+```
+secret one line
+<empty line>
+comments until end of file
+```
+
+Single-line secret without comments:
+```
+secret one line
+```
+
+Multi-line secret with comments:
 ```
 <empty line>
 possibly several lines of comments
@@ -40,28 +52,16 @@ without empty lines
 secret until end of file
 ```
 
-Multi-line secrets without comments:
+Multi-line secret without comments:
 ```
 <empty line>
 <empty line>
 secret until end of file
 ```
 
-Single-line secrets with comments:
-```
-single-line secret
-<empty line>
-comments until end of file
-```
-
-Single-line secrets without comments:
-```
-single-line secret
-```
-
-The rationale for why we have 2 distinct secret formats for multi-line and single-line secrets
-(and not just multi-line secrets) is mainly for backward compatibility reasons since most of
-the existing secrets are of the "single-line secret" format.
+The rationale for why we have 2 distinct secret formats for multi-line
+and single-line secrets (and not just multi-line secrets) is mainly
+for backward compatibility reasons.
 
 ## Commands
 

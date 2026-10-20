@@ -441,11 +441,11 @@ Checking for validity of own secrets. Use -v flag to break down per secret
                 (fun (ok, invalid, fail) secret_name ->
                   try
                     let secret_text = Secrets.decrypt_exn ~silence_stderr:true secret_name in
-                    match Secret.Validation.validate secret_text with
-                    | Ok kind ->
+                    match Secret.validate secret_text with
+                    | Ok secret ->
                       let () =
                         Util.verbose_eprintlf ~verbose "✅ %s [ valid %s ]" (show_name secret_name)
-                          (Secret.kind_to_string kind)
+                          (Secret.kind_to_string secret.kind)
                       in
                       succ ok, invalid, fail
                     | Error (e, validation_error_type) ->
@@ -455,7 +455,7 @@ Checking for validity of own secrets. Use -v flag to break down per secret
                         match upgrade_mode, validation_error_type with
                         | Upgrade, SingleLineLegacy ->
                           (try
-                             let parsed_secret = Secret.Validation.parse_exn secret_text in
+                             let parsed_secret = Secret.parse_exn secret_text in
                              let upgraded_secret = reconstruct_secret ?comments:parsed_secret.comments parsed_secret in
                              let recipients = Util.Recipients.get_recipients_or_die secret_name in
                              Storage.Secrets.encrypt_exn ~verbose:false ~plaintext:upgraded_secret ~secret_name
@@ -847,24 +847,24 @@ let () =
          when retrieving the secrets. Please check the $(i,examples) section below for an explanation of the formats. ";
       `P "Secrets that don't conform to these formats will be rejected.";
       `S Manpage.s_examples;
-      `P "$(b,Multiline secret with comments:)";
-      `Pre
-        {| <empty line>
- possibly several lines of comments
- without empty lines in the middle
- <empty line>
- secret until end of file|};
-      `P "$(b,Multiline secret without comments:)";
-      `Pre {| <empty line>
- <empty line>
- secret until end of file|};
-      `P "$(b,Single line secret without commments:)";
-      `Pre {| secret one line |};
-      `P "$(b,Single line secret with commments:)";
+      `P "$(b,Single-line secret with comments:)";
       `Pre {| secret one line
  <empty line>
  comments until end of file|};
-      `P "$(b,Single line secret without commments legacy [DEPRECATED]:)";
+      `P "$(b,Single-line secret without comments:)";
+      `Pre {| secret one line |};
+      `P "$(b,Multi-line secret with comments:)";
+      `Pre
+        {| <empty line>
+ possibly several lines of comments
+ without empty lines
+ <empty line>
+ secret until end of file|};
+      `P "$(b,Multi-line secret without comments:)";
+      `Pre {| <empty line>
+ <empty line>
+ secret until end of file|};
+      `P "$(b,Single-line secret without comments legacy [DEPRECATED]:)";
       `Pre {| secret one line
  comments until end of file|};
     ]

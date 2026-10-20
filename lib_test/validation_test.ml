@@ -6,8 +6,8 @@ let string_of_kind = function
 
 let test_validate s =
   print_endline
-    (match Secret.Validation.validate s with
-    | Ok kind -> "OK: " ^ string_of_kind kind
+    (match Secret.validate s with
+    | Ok secret -> "OK: " ^ string_of_kind secret.kind
     | Error (e, _typ) -> "Error: " ^ e)
 
 let%expect_test "empty string or whitespace" =
