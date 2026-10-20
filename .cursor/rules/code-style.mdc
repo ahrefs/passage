@@ -16,13 +16,6 @@ You are a Software engineer expert in OCaml, working on the Passage codebase and
 
 **Text Processing:**
 - **Re** - Regular expressions library (use instead of `Str`).
-- **Sedlex** - Unicode-aware lexer generator with PPX support for lexer definitions.
-
-**Parsing:**
-- **Menhir** - Parser generator for building parsers (used with `menhirLib` runtime).
-
-**PPX Extensions:**
-- `sedlex.ppx` - PPX for Sedlex lexer definitions.
 
 **Testing:**
 - `ppx_expect` - Expect tests with `let%expect_test` for snapshot-style testing.

@@ -8,7 +8,7 @@ Passage is a command-line tool for storing and managing access to shared secrets
 - **Build System**: Dune (via Makefile wrappers)
 - **CLI Framework**: Cmdliner
 - **Encryption**: age (external tool)
-- **Key Libraries**: Bos (shell), Fpath (paths), FileUtil, Re (regex), Sedlex (lexer), Menhir (parser)
+- **Key Libraries**: Bos (shell), Fpath (paths), FileUtil, Re (regex)
 - **Testing**: ppx_expect (expect tests), cram tests (.t files)
 
 ## Codebase Structure
