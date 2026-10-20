@@ -53,7 +53,6 @@ If there's a `make` command available, don't use dune or opam directly. Availabl
   - `template.ml` - Template parsing and secret substitution
   - `template_ast.ml` - AST types (Iden for `{{{secret}}}`, Text for literals)
   - `template_lexer.ml` - Sedlex-based Unicode lexer
-  - `template_parser.mly` - Menhir parser for `{{{secret_name}}}` syntax
 
 ### Key Patterns
 - This repo is meant to be lib-first, so it can be used by lib consumers too, not only in the `bin` folder. Make sure that the patterns used in `/lib` code reflect the best practices for that.
